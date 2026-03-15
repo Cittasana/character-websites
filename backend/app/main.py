@@ -16,7 +16,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.config import get_settings
-from app.database import check_db_health, engine
+from app.supabase_client import check_supabase_health
 from app.middleware.audit import AuditMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
 
@@ -42,11 +42,12 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("startup", app=settings.APP_NAME, env=settings.APP_ENV)
-    # Validate DB connectivity at startup
-    if not await check_db_health():
-        logger.error("database_unreachable")
-        raise RuntimeError("Cannot connect to PostgreSQL on startup")
-    logger.info("database_connected")
+
+    # Validate Supabase connectivity at startup
+    if not check_supabase_health():
+        logger.error("supabase_unreachable")
+        raise RuntimeError("Cannot connect to Supabase on startup")
+    logger.info("supabase_connected")
 
     # Run security checks in production
     if settings.APP_ENV == "production":
@@ -59,8 +60,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("security_checks_passed")
 
     yield
-    # Shutdown: dispose connection pool
-    await engine.dispose()
     logger.info("shutdown")
 
 
@@ -99,6 +98,7 @@ def create_app() -> FastAPI:
     from app.routes.retrieve.personality import router as personality_router
     from app.routes.retrieve.voiceclips import router as voiceclips_router
     from app.routes.retrieve.qa import router as qa_router
+    from app.routes.omi.devices import router as omi_router
 
     app.include_router(auth_router)
     app.include_router(voice_router)
@@ -108,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(personality_router)
     app.include_router(voiceclips_router)
     app.include_router(qa_router)
+    app.include_router(omi_router)
 
     # ── Exception Handlers ─────────────────────────────────────────────────
     @app.exception_handler(RequestValidationError)
@@ -122,10 +123,10 @@ def create_app() -> FastAPI:
     # ── Health Check ───────────────────────────────────────────────────────
     @app.get("/health", tags=["meta"], include_in_schema=False)
     async def health_check() -> dict:
-        db_ok = await check_db_health()
+        supabase_ok = check_supabase_health()
         return {
-            "status": "ok" if db_ok else "degraded",
-            "database": "connected" if db_ok else "unreachable",
+            "status": "ok" if supabase_ok else "degraded",
+            "supabase": "connected" if supabase_ok else "unreachable",
             "version": settings.APP_VERSION,
         }
 

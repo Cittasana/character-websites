@@ -1,26 +1,15 @@
 """
-Auth routes: register, login, refresh, logout, me.
+Auth routes: register, login, refresh, me.
+All auth operations are proxied to Supabase Auth.
 """
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from jose import JWTError
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_active_user
-from app.auth.security import (
-    create_access_token,
-    create_refresh_token,
-    get_password_hash,
-    verify_password,
-    verify_token,
-)
-from app.database import get_db
-from app.models.audit_log import AuditLog
-from app.models.user import User
+from app.supabase_client import get_supabase, get_supabase_anon
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -59,31 +48,8 @@ class UserResponse(BaseModel):
     email: str
     full_name: str | None
     is_active: bool
-    is_verified: bool
     subdomain: str | None
     plan: str
-
-    model_config = {"from_attributes": True}
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-async def _log_event(
-    db: AsyncSession,
-    event_type: str,
-    user_id: uuid.UUID | None,
-    request: Request,
-    metadata: dict | None = None,
-) -> None:
-    log = AuditLog(
-        user_id=user_id,
-        event_type=event_type,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        request_path=str(request.url.path),
-        request_method=request.method,
-        metadata=metadata,
-    )
-    db.add(log)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -91,96 +57,191 @@ async def _log_event(
 async def register(
     body: RegisterRequest,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenResponse:
-    """Create a new user account and return tokens."""
-    # Check email uniqueness
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalar_one_or_none() is not None:
+    """Create a new user account via Supabase Auth and return session tokens."""
+    supabase = get_supabase_anon()
+
+    try:
+        auth_response = supabase.auth.sign_up(
+            {
+                "email": body.email,
+                "password": body.password,
+            }
+        )
+    except Exception as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Registration failed: {exc}",
         )
 
-    user = User(
-        email=body.email,
-        hashed_password=get_password_hash(body.password),
-        full_name=body.full_name,
+    if auth_response.user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration failed — email may already be registered",
+        )
+
+    # Create the public.users profile row using service role (bypasses RLS)
+    service_client = get_supabase()
+    try:
+        service_client.table("users").insert(
+            {
+                "id": str(auth_response.user.id),
+                "email": body.email,
+                "full_name": body.full_name,
+                "is_active": True,
+                "plan": "free",
+            }
+        ).execute()
+    except Exception:
+        # Profile row creation is best-effort; auth account already exists
+        pass
+
+    # Log audit event
+    try:
+        service_client.table("audit_logs").insert(
+            {
+                "user_id": str(auth_response.user.id),
+                "event_type": "auth.register",
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent"),
+                "request_path": str(request.url.path),
+                "request_method": "POST",
+                "response_status": 201,
+            }
+        ).execute()
+    except Exception:
+        pass
+
+    session = auth_response.session
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_201_CREATED,
+            detail="Account created. Please verify your email before logging in.",
+        )
+
+    return TokenResponse(
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
     )
-    db.add(user)
-    await db.flush()  # get the ID before commit
-
-    await _log_event(db, "auth.register", user.id, request)
-
-    access_token = create_access_token(str(user.id), user.email)
-    refresh_token = create_refresh_token(str(user.id))
-
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
     body: LoginRequest,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenResponse:
-    """Authenticate user and return tokens."""
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
+    """Authenticate user via Supabase Auth and return session tokens."""
+    supabase = get_supabase_anon()
 
-    if user is None or not verify_password(body.password, user.hashed_password):
+    try:
+        auth_response = supabase.auth.sign_in_with_password(
+            {"email": body.email, "password": body.password}
+        )
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not user.is_active:
+    if auth_response.user is None or auth_response.session is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is deactivated",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    await _log_event(db, "auth.login", user.id, request)
+    # Check account is active in public.users
+    service_client = get_supabase()
+    try:
+        user_row = service_client.table("users").select("is_active").eq(
+            "id", str(auth_response.user.id)
+        ).single().execute()
+        if user_row.data and not user_row.data.get("is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is deactivated",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
-    access_token = create_access_token(str(user.id), user.email)
-    refresh_token = create_refresh_token(str(user.id))
+    # Audit log
+    try:
+        service_client.table("audit_logs").insert(
+            {
+                "user_id": str(auth_response.user.id),
+                "event_type": "auth.login",
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent"),
+                "request_path": str(request.url.path),
+                "request_method": "POST",
+                "response_status": 200,
+            }
+        ).execute()
+    except Exception:
+        pass
 
-    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+    return TokenResponse(
+        access_token=auth_response.session.access_token,
+        refresh_token=auth_response.session.refresh_token,
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
     body: RefreshRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenResponse:
-    """Issue a new access token using a valid refresh token."""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid refresh token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    """Issue a new access token using a valid Supabase refresh token."""
+    supabase = get_supabase_anon()
+
     try:
-        payload = verify_token(body.refresh_token, expected_type="refresh")
-        user_id = uuid.UUID(payload.sub)
-    except (JWTError, ValueError):
-        raise credentials_exception
+        auth_response = supabase.auth.refresh_session(body.refresh_token)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    if auth_response.session is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not refresh session",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    if user is None or not user.is_active:
-        raise credentials_exception
-
-    access_token = create_access_token(str(user.id), user.email)
-    new_refresh_token = create_refresh_token(str(user.id))
-
-    return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)
+    return TokenResponse(
+        access_token=auth_response.session.access_token,
+        refresh_token=auth_response.session.refresh_token,
+    )
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+    current_user: Annotated[dict, Depends(get_current_active_user)],
 ) -> UserResponse:
-    """Return the authenticated user's profile."""
-    return UserResponse.model_validate(current_user)
+    """Return the authenticated user's profile from public.users."""
+    supabase = get_supabase()
+    user_id = str(current_user.id)
+
+    result = supabase.table("users").select(
+        "id, email, full_name, is_active, subdomain, plan"
+    ).eq("id", user_id).single().execute()
+
+    if result.data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found",
+        )
+
+    data = result.data
+    return UserResponse(
+        id=data["id"],
+        email=data["email"],
+        full_name=data.get("full_name"),
+        is_active=data.get("is_active", True),
+        subdomain=data.get("subdomain"),
+        plan=data.get("plan", "free"),
+    )

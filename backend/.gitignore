@@ -15,6 +15,7 @@ build/
 venv/
 env/
 .env
+.env.local
 !.env.example
 
 # Testing
@@ -40,5 +41,5 @@ logs/
 # Docker
 .dockerignore
 
-# Alembic
-migrations/versions/__pycache__/
+# Alembic (removed — schema managed by Supabase)
+# migrations/versions/__pycache__/

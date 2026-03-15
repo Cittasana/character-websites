@@ -4,27 +4,24 @@ Requirements:
 - JWT authentication required
 - File type validated via magic bytes (not extension)
 - Max 50MB
-- Files stored in S3 with AES-256 encryption
+- Files stored in Supabase Storage (voice-recordings bucket)
 - Upload event logged to audit_logs
 - Triggers async Celery analysis job
 """
+import hashlib
 import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.auth.dependencies import get_current_active_user
 from app.config import get_settings
-from app.database import get_db
 from app.file_validation import validate_voice_file
-from app.models.audit_log import AuditLog
-from app.models.recording import Recording
-from app.models.user import User
-from app.storage import upload_file_to_s3
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.storage import get_storage_service
+from app.supabase_client import get_supabase
 
 settings = get_settings()
 router = APIRouter(prefix="/api/upload", tags=["upload"])
@@ -33,7 +30,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 class VoiceUploadResponse(BaseModel):
     recording_id: uuid.UUID
-    s3_key: str
+    storage_path: str
     original_filename: str
     file_size_bytes: int
     detected_mime: str
@@ -56,9 +53,10 @@ class VoiceUploadResponse(BaseModel):
 async def upload_voice(
     request: Request,
     file: Annotated[UploadFile, File(description="Audio file: mp3, wav, or m4a")],
-    current_user: Annotated[User, Depends(get_current_active_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_active_user)],
 ) -> VoiceUploadResponse:
+    user_id = str(current_user.id)
+
     # ── Read file bytes ───────────────────────────────────────────────────
     file_data = await file.read()
     file_size = len(file_data)
@@ -71,67 +69,181 @@ async def upload_voice(
             detail=validation.error,
         )
 
-    # ── Upload to S3 ──────────────────────────────────────────────────────
-    import io
+    # ── Compute SHA-256 for deduplication ─────────────────────────────────
+    sha256 = hashlib.sha256(file_data).hexdigest()
 
-    s3_result = upload_file_to_s3(
-        file_obj=io.BytesIO(file_data),
-        user_id=str(current_user.id),
-        file_type="voice",
-        original_filename=file.filename or "upload.audio",
-        content_type=validation.detected_mime,
-    )
+    # ── Upload to Supabase Storage ────────────────────────────────────────
+    original_filename = file.filename or "upload.audio"
+    unique_filename = f"{uuid.uuid4()}_{original_filename}"
+    storage = get_storage_service()
+
+    try:
+        storage_path = storage.upload_voice(
+            user_id=user_id,
+            filename=unique_filename,
+            file_bytes=file_data,
+            content_type=validation.detected_mime,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Storage upload failed: {exc}",
+        )
 
     # ── Persist recording row ─────────────────────────────────────────────
-    recording = Recording(
-        user_id=current_user.id,
-        s3_key=s3_result["s3_key"],
-        s3_bucket=s3_result["s3_bucket"],
-        original_filename=file.filename or "upload.audio",
-        file_size_bytes=file_size,
-        mime_type=validation.detected_mime,
-        processing_status="pending",
-    )
-    db.add(recording)
-    await db.flush()
+    supabase = get_supabase()
+    recording_data = {
+        "user_id": user_id,
+        "storage_path": storage_path,
+        "storage_bucket": "voice-recordings",
+        "original_filename": original_filename,
+        "file_size_bytes": file_size,
+        "mime_type": validation.detected_mime,
+        "sha256": sha256,
+        "processing_status": "pending",
+    }
+
+    try:
+        result = supabase.table("recordings").insert(recording_data).execute()
+        recording_id = result.data[0]["id"]
+        processing_status = "pending"
+    except Exception as exc:
+        # Roll back storage upload if DB insert fails
+        try:
+            storage.delete_file("voice-recordings", storage_path)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database insert failed: {exc}",
+        )
 
     # ── Audit log ─────────────────────────────────────────────────────────
-    log = AuditLog(
-        user_id=current_user.id,
-        event_type="upload.voice",
-        resource_type="recording",
-        resource_id=str(recording.id),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        request_path=str(request.url.path),
-        request_method="POST",
-        response_status=202,
-        metadata={
-            "file_size_bytes": file_size,
-            "mime_type": validation.detected_mime,
-            "s3_key": s3_result["s3_key"],
-        },
-    )
-    db.add(log)
-    await db.flush()
+    try:
+        supabase.table("audit_logs").insert(
+            {
+                "user_id": user_id,
+                "event_type": "upload.voice",
+                "resource_type": "recording",
+                "resource_id": recording_id,
+                "ip_address": request.client.host if request.client else None,
+                "user_agent": request.headers.get("user-agent"),
+                "request_path": str(request.url.path),
+                "request_method": "POST",
+                "response_status": 202,
+                "metadata": {
+                    "file_size_bytes": file_size,
+                    "mime_type": validation.detected_mime,
+                    "storage_path": storage_path,
+                },
+            }
+        ).execute()
+    except Exception:
+        pass  # Audit failure must not block the response
 
     # ── Trigger async Celery analysis ────────────────────────────────────
     try:
         from app.jobs.analysis import analyze_recording_task
 
-        task = analyze_recording_task.delay(str(recording.id))
-        recording.celery_task_id = task.id
-        recording.processing_status = "queued"
+        task = analyze_recording_task.delay(recording_id)
+        supabase.table("recordings").update(
+            {"celery_task_id": task.id, "processing_status": "queued"}
+        ).eq("id", recording_id).execute()
+        processing_status = "queued"
     except Exception:
-        # Job broker unavailable — log but don't fail the upload
-        recording.processing_status = "pending"
+        # Job broker unavailable — leave status as pending
+        processing_status = "pending"
 
     return VoiceUploadResponse(
-        recording_id=recording.id,
-        s3_key=s3_result["s3_key"],
-        original_filename=recording.original_filename,
+        recording_id=uuid.UUID(recording_id),
+        storage_path=storage_path,
+        original_filename=original_filename,
         file_size_bytes=file_size,
         detected_mime=validation.detected_mime,
-        processing_status=recording.processing_status,
+        processing_status=processing_status,
         message="Voice recording uploaded. Analysis job queued.",
     )
+
+
+@router.get(
+    "/voice/check-duplicate",
+    summary="Check if a voice recording already exists",
+    description="Query by SHA-256 hash and/or Omi device ID to detect duplicates before upload.",
+)
+async def check_duplicate(
+    current_user: Annotated[dict, Depends(get_current_active_user)],
+    sha256: str | None = None,
+    omi_id: str | None = None,
+) -> dict:
+    user_id = str(current_user.id)
+    supabase = get_supabase()
+
+    query = supabase.table("recordings").select("id").eq("user_id", user_id)
+
+    if sha256:
+        query = query.eq("sha256", sha256)
+    if omi_id:
+        query = query.eq("omi_recording_id", omi_id)
+
+    if not sha256 and not omi_id:
+        return {"is_duplicate": False}
+
+    result = query.limit(1).execute()
+    return {"is_duplicate": len(result.data) > 0}
+
+
+@router.patch(
+    "/voice/{recording_id}/acoustic",
+    summary="Attach acoustic metadata to a recording",
+    description="PATCH endpoint to update acoustic_metadata on an existing recording.",
+)
+async def patch_acoustic_metadata(
+    recording_id: uuid.UUID,
+    acoustic_metadata: dict,
+    current_user: Annotated[dict, Depends(get_current_active_user)],
+) -> dict:
+    user_id = str(current_user.id)
+    supabase = get_supabase()
+
+    # Verify ownership
+    existing = supabase.table("recordings").select("id").eq("id", str(recording_id)).eq(
+        "user_id", user_id
+    ).single().execute()
+
+    if not existing.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording not found or access denied",
+        )
+
+    supabase.table("recordings").update(
+        {"acoustic_metadata": acoustic_metadata}
+    ).eq("id", str(recording_id)).execute()
+
+    return {"recording_id": str(recording_id), "updated": True}
+
+
+@router.patch(
+    "/voice/settings",
+    summary="Update voice upload settings",
+    description="Update sync settings such as sync_enabled and exclude_period.",
+)
+async def update_voice_settings(
+    body: dict,
+    current_user: Annotated[dict, Depends(get_current_active_user)],
+) -> dict:
+    user_id = str(current_user.id)
+    supabase = get_supabase()
+
+    allowed_keys = {"sync_enabled", "exclude_period"}
+    update_payload = {k: v for k, v in body.items() if k in allowed_keys}
+
+    if not update_payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid settings fields provided",
+        )
+
+    supabase.table("users").update(update_payload).eq("id", user_id).execute()
+
+    return {"user_id": user_id, "updated": update_payload}

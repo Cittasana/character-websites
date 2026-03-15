@@ -1,6 +1,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # Character-Websites Backend — Production Dockerfile
 # Multi-stage build: deps + app
+# No libpq/asyncpg — database is Supabase (remote, HTTP-based via supabase-py)
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Stage 1: Build dependencies ────────────────────────────────────────────────
@@ -8,11 +9,10 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# System deps needed for librosa, psycopg2, python-magic, Pillow
+# System deps needed for librosa, python-magic, Pillow, soundfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
-    libpq-dev \
     libmagic1 \
     libmagic-dev \
     libsndfile1 \
@@ -33,9 +33,8 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Runtime system deps only
+# Runtime system deps only (no libpq needed)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
     libmagic1 \
     libsndfile1 \
     ffmpeg \
@@ -50,7 +49,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY app/ ./app/
-COPY migrations/ ./migrations/
 
 # Set non-root user
 USER appuser

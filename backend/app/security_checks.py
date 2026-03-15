@@ -1,6 +1,7 @@
 """
-Phase 5 security validation utilities.
-Run at startup to verify encryption, TLS, and secret hygiene.
+Security validation utilities.
+Run at startup to verify secret hygiene and connectivity.
+S3/bucket encryption checks removed — Supabase Storage handles encryption.
 """
 import logging
 import os
@@ -8,18 +9,16 @@ import re
 from typing import Any
 
 from app.config import get_settings
-from app.storage import verify_bucket_encryption
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
 # ── Secrets that should NEVER be default/empty ────────────────────────────────
 _REQUIRED_SECRETS = [
-    "JWT_SECRET_KEY",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
     "ANTHROPIC_API_KEY",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "S3_BUCKET_NAME",
 ]
 
 _INSECURE_SECRET_PATTERNS = [
@@ -50,11 +49,6 @@ def audit_environment_secrets() -> dict[str, Any]:
                 issues.append(f"SECRET INSECURE: {secret_name} appears to use a placeholder value")
                 break
 
-    # JWT secret should be at least 32 chars
-    jwt_key = os.environ.get("JWT_SECRET_KEY", "")
-    if jwt_key and len(jwt_key) < 32:
-        issues.append("JWT_SECRET_KEY is too short (minimum 32 characters recommended)")
-
     result = {"passed": len(issues) == 0, "issues": issues}
     if issues:
         for issue in issues:
@@ -68,45 +62,43 @@ def audit_environment_secrets() -> dict[str, Any]:
 def check_tls_enforcement() -> dict[str, Any]:
     """
     Verify TLS is enforced:
-    - DATABASE_URL uses SSL
     - APP_ENV is not development with DEBUG=True in production
+    - ALLOWED_ORIGINS uses HTTPS in production
     """
     issues = []
-
-    db_url = os.environ.get("DATABASE_URL", "")
-    if settings.APP_ENV == "production" and "sslmode=require" not in db_url:
-        issues.append(
-            "DATABASE_URL should include ?sslmode=require in production"
-        )
 
     if settings.APP_ENV == "production" and settings.DEBUG:
         issues.append("DEBUG=True is set in production environment — disable immediately")
 
-    # Check ALLOWED_ORIGINS doesn't include http:// in production
     for origin in settings.ALLOWED_ORIGINS:
         if settings.APP_ENV == "production" and origin.startswith("http://"):
             issues.append(f"ALLOWED_ORIGINS contains non-HTTPS origin in production: {origin}")
 
+    # Supabase URL must be HTTPS
+    if not settings.SUPABASE_URL.startswith("https://"):
+        issues.append("SUPABASE_URL must use HTTPS")
+
     return {"passed": len(issues) == 0, "issues": issues}
 
 
-async def check_s3_encryption() -> dict[str, Any]:
+async def check_supabase_connectivity() -> dict[str, Any]:
     """
-    Verify S3 bucket has server-side encryption enabled.
+    Verify Supabase is reachable.
     """
     try:
-        encrypted = verify_bucket_encryption()
-        if not encrypted:
+        from app.supabase_client import check_supabase_health
+        reachable = check_supabase_health()
+        if not reachable:
             return {
                 "passed": False,
-                "issues": [f"S3 bucket '{settings.S3_BUCKET_NAME}' does NOT have server-side encryption enabled"],
+                "issues": ["Supabase is not reachable — check SUPABASE_URL and credentials"],
             }
-        logger.info("S3 encryption check: bucket %s is encrypted", settings.S3_BUCKET_NAME)
+        logger.info("Supabase connectivity check: OK")
         return {"passed": True, "issues": []}
     except Exception as exc:
         return {
             "passed": False,
-            "issues": [f"Could not verify S3 encryption: {exc}"],
+            "issues": [f"Could not verify Supabase connectivity: {exc}"],
         }
 
 
@@ -118,7 +110,7 @@ async def run_all_security_checks() -> dict[str, Any]:
     results = {
         "secrets": audit_environment_secrets(),
         "tls": check_tls_enforcement(),
-        "s3_encryption": await check_s3_encryption(),
+        "supabase": await check_supabase_connectivity(),
     }
 
     all_passed = all(r["passed"] for r in results.values())

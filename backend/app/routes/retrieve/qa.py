@@ -10,16 +10,12 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.auth.dependencies import get_current_active_user
 from app.config import get_settings
-from app.database import get_db
-from app.models.personality_schema import PersonalitySchema
-from app.models.user import User
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.supabase_client import get_supabase
 
 settings = get_settings()
 router = APIRouter(prefix="/api/retrieve", tags=["retrieve"])
@@ -84,37 +80,31 @@ Return ONLY the response text — no labels, no quotes."""
 async def answer_employer_question(
     request: Request,
     body: QARequest,
-    current_user: Annotated[User, Depends(get_current_active_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[dict, Depends(get_current_active_user)],
 ) -> QAResponse:
     # Only the user themselves can generate Q&A responses (their own voice)
-    if current_user.id != body.user_id:
+    if str(current_user.id) != str(body.user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
         )
 
     # ── Load personality schema ───────────────────────────────────────────
-    result = await db.execute(
-        select(PersonalitySchema)
-        .where(
-            PersonalitySchema.user_id == body.user_id,
-            PersonalitySchema.is_current == True,  # noqa: E712
-        )
-        .order_by(PersonalitySchema.created_at.desc())
-        .limit(1)
-    )
-    schema = result.scalar_one_or_none()
+    supabase = get_supabase()
+    result = supabase.table("personality_schemas").select("*").eq(
+        "user_id", str(body.user_id)
+    ).eq("is_current", True).order("created_at", desc=True).limit(1).execute()
 
-    if schema is None:
+    if not result.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No personality profile found. Upload a voice recording first.",
         )
 
-    dims = schema.dimensions
-    blend = schema.persona_blend
-    cv = schema.cv_content or {}
+    schema = result.data[0]
+    dims = schema.get("dimensions", {})
+    blend = schema.get("persona_blend", {})
+    cv = schema.get("cv_content") or {}
 
     cv_context = ""
     if cv:
@@ -156,7 +146,6 @@ async def answer_employer_question(
     answer_text = message.content[0].text.strip()
 
     # ── Build TTS metadata ────────────────────────────────────────────────
-    # TTS hints derived from personality (for frontend TTS synthesis)
     energy = dims.get("energy", 50)
     formality = dims.get("formality", 50)
 
