@@ -1,18 +1,21 @@
 /**
  * TypeScript types for the Character-Websites Personality Schema.
  * Mirrors the JSON structure produced by the Claude AI analysis pipeline on the backend.
+ *
+ * Also mirrors the shape returned by the Supabase RPC `get_website_data(p_username)`,
+ * which returns a nested object: { user, personality, website_configs }.
  */
 
-// ── Core personality dimensions (0–10 scale) ────────────────────────────────
+// ── Core personality dimensions (0–100 scale, stored as dim_* in DB) ────────
 
 export interface PersonalityDimensions {
-  warmth: number;         // 0-10: cold/analytical → warm/empathetic
-  energy: number;         // 0-10: calm/reserved → high-energy/expressive
-  confidence: number;     // 0-10: humble/uncertain → bold/assured
-  curiosity: number;      // 0-10: conventional → intellectually adventurous
-  formality: number;      // 0-10: casual/relaxed → formal/professional
-  humor: number;          // 0-10: serious → playful/funny
-  openness: number;       // 0-10: private/guarded → open/transparent
+  warmth: number;         // 0-100: cold/analytical → warm/empathetic
+  energy: number;         // 0-100: calm/reserved → high-energy/expressive
+  confidence: number;     // 0-100: humble/uncertain → bold/assured
+  curiosity: number;      // 0-100: conventional → intellectually adventurous
+  formality: number;      // 0-100: casual/relaxed → formal/professional
+  humor: number;          // 0-100: serious → playful/funny
+  openness: number;       // 0-100: private/guarded → open/transparent
 }
 
 // ── Persona blend ────────────────────────────────────────────────────────────
@@ -167,6 +170,77 @@ export interface PersonalitySchema {
   // Media (populated separately from /api/retrieve endpoints)
   voice_clips?: VoiceClip[];
   photos?: Photo[];
+}
+
+// ── RPC response shape (get_website_data) ────────────────────────────────────
+//
+// The Supabase RPC `get_website_data(p_username)` returns a flat JSONB object
+// with a DIFFERENT shape than PersonalitySchema. The frontend api.server.ts casts
+// the RPC result directly to PersonalitySchema, but the actual RPC returns nested
+// { user, personality, website_configs } objects.
+//
+// Use GetWebsiteDataRPCResponse as the actual RPC return type, then map to
+// PersonalitySchema for rendering.
+
+export interface RPCUserData {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  modes_unlocked: string[];
+}
+
+export interface RPCPersonalityData {
+  // Dimensions (stored as 0-100 in DB, prefixed dim_*)
+  dim_warmth: number;
+  dim_energy: number;
+  dim_confidence: number;
+  dim_curiosity: number;
+  dim_formality: number;
+  dim_humor: number;
+  dim_openness: number;
+
+  // Persona
+  primary_persona: PersonaType;
+  primary_weight: number;
+  secondary_persona: PersonaType | null;
+  secondary_weight: number;
+
+  // Color system
+  color_temperature: number;
+  color_saturation: number;
+  color_accent: string;
+
+  // Typography
+  typography_display: string;
+  typography_body: string;
+  typography_weight: number;
+
+  // Layout
+  layout_density: number;
+  layout_asymmetry: number;
+  layout_whitespace: number;
+  layout_flow: FlowDirection;
+
+  // Animation
+  animation_speed: number;
+  animation_intensity: number;
+
+  // Content (stored as JSONB)
+  cv_content: CVContent | null;
+  dating_content: DatingContent | null;
+}
+
+export interface RPCWebsiteConfigEntry {
+  mode: "cv" | "dating" | "both";
+  is_published: boolean;
+  last_rendered_at: string | null;
+}
+
+export interface GetWebsiteDataRPCResponse {
+  user: RPCUserData;
+  personality: RPCPersonalityData;
+  website_configs: RPCWebsiteConfigEntry[] | null;
 }
 
 // ── API response wrappers ────────────────────────────────────────────────────
