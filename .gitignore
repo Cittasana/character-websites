@@ -1,0 +1,31 @@
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+backend/.venv/
+omi/.venv/
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# OS
+.DS_Store
+*.DS_Store
+
+# IDE
+.cursor/
+.vscode/
