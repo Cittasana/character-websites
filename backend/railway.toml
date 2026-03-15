@@ -1,0 +1,58 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Railway deployment configuration for Character-Websites Backend
+# ══════════════════════════════════════════════════════════════════════════════
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4 --worker-class uvicorn.workers.UvicornWorker --proxy-headers --forwarded-allow-ips '*'"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5
+
+# ── Services defined in railway.json / Railway dashboard ─────────────────────
+# api:        FastAPI backend (this file)
+# worker:     Celery analysis worker
+# postgres:   Managed PostgreSQL 15 (via Railway plugin)
+# redis:      Managed Redis (via Railway plugin)
+
+[[services]]
+name = "api"
+source = "backend/"
+
+  [services.build]
+  builder = "dockerfile"
+  dockerfilePath = "Dockerfile"
+
+  [services.deploy]
+  startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4 --proxy-headers --forwarded-allow-ips '*'"
+  healthcheckPath = "/health"
+  healthcheckTimeout = 30
+  region = "us-west1"
+  numReplicas = 2
+  sleepApplication = false
+
+  [services.variables]
+  APP_ENV = "production"
+  DEBUG = "false"
+
+[[services]]
+name = "celery-worker"
+source = "backend/"
+
+  [services.build]
+  builder = "dockerfile"
+  dockerfilePath = "Dockerfile"
+
+  [services.deploy]
+  startCommand = "celery -A app.jobs.celery_app:celery_app worker --loglevel=info --concurrency=2 --queues=analysis,webhooks,default"
+  region = "us-west1"
+  numReplicas = 1
+  sleepApplication = false
+
+  [services.variables]
+  APP_ENV = "production"
+  DEBUG = "false"

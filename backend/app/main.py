@@ -47,6 +47,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error("database_unreachable")
         raise RuntimeError("Cannot connect to PostgreSQL on startup")
     logger.info("database_connected")
+
+    # Run security checks in production
+    if settings.APP_ENV == "production":
+        from app.security_checks import run_all_security_checks
+        sec_result = await run_all_security_checks()
+        if not sec_result["all_passed"]:
+            for issue in sec_result["issues"]:
+                logger.error("security_check_failed", issue=issue)
+        else:
+            logger.info("security_checks_passed")
+
     yield
     # Shutdown: dispose connection pool
     await engine.dispose()

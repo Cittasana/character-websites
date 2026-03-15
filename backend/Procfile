@@ -1,0 +1,4 @@
+# Railway / Heroku Procfile
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4 --worker-class uvicorn.workers.UvicornWorker --proxy-headers --forwarded-allow-ips '*'
+worker: celery -A app.jobs.celery_app:celery_app worker --loglevel=info --concurrency=2 --queues=analysis,webhooks,default
+release: alembic -c migrations/alembic.ini upgrade head

@@ -1,0 +1,200 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Character-Websites — Local Development Docker Compose
+# Services: FastAPI + PostgreSQL 15 + Redis + Celery Worker + Nginx
+# ══════════════════════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL 15 with pgvector ────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: cw_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: characterwebsites
+      POSTGRES_USER: cw_app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword_change_in_prod}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cw_app -d characterwebsites"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - cw_network
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cw_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-devredispass}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-devredispass}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cw_network
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: cw_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cw_app:${DB_PASSWORD:-devpassword_change_in_prod}@postgres:5432/characterwebsites
+      DATABASE_URL_SYNC: postgresql://cw_app:${DB_PASSWORD:-devpassword_change_in_prod}@postgres:5432/characterwebsites
+      REDIS_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/2
+      APP_ENV: development
+      DEBUG: "true"
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 2
+      --log-level info
+      --reload
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro  # hot reload in dev
+    networks:
+      - cw_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Celery Worker (analysis queue) ────────────────────────────────────────
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: cw_celery_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cw_app:${DB_PASSWORD:-devpassword_change_in_prod}@postgres:5432/characterwebsites
+      DATABASE_URL_SYNC: postgresql://cw_app:${DB_PASSWORD:-devpassword_change_in_prod}@postgres:5432/characterwebsites
+      REDIS_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/2
+    command: >
+      celery -A app.jobs.celery_app:celery_app worker
+      --loglevel=info
+      --concurrency=2
+      --queues=analysis,webhooks,default
+      --hostname=worker@%h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cw_network
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.jobs.celery_app:celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+  # ── Celery Flower (monitoring UI) ─────────────────────────────────────────
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: cw_flower
+    restart: unless-stopped
+    environment:
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-devredispass}@redis:6379/1
+    command: >
+      celery -A app.jobs.celery_app:celery_app flower
+      --port=5555
+      --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-flowerpass}
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    networks:
+      - cw_network
+
+  # ── Nginx (dev proxy) ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: cw_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - api
+    networks:
+      - cw_network
+
+  # ── Alembic migrations (run-once init) ─────────────────────────────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: cw_migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL_SYNC: postgresql://cw_app:${DB_PASSWORD:-devpassword_change_in_prod}@postgres:5432/characterwebsites
+    command: >
+      alembic -c migrations/alembic.ini upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cw_network
+    restart: "no"
+
+
+volumes:
+  postgres_data:
+  redis_data:
+  nginx_logs:
+
+
+networks:
+  cw_network:
+    driver: bridge
