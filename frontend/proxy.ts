@@ -1,9 +1,11 @@
 /**
- * Next.js Proxy — Wildcard Subdomain Routing
+ * Next.js Proxy — Wildcard Subdomain Routing + Supabase Auth Session Refresh
  *
  * Intercepts every request, extracts the subdomain from the Host header,
  * and rewrites the request to the /{username}/... route so the App Router
  * can serve the correct character website.
+ *
+ * Also refreshes Supabase auth sessions on every request.
  *
  * Examples:
  *   alex.character.website/          → /alex
@@ -15,6 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
 const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? "localhost";
 
@@ -55,7 +58,10 @@ function extractSubdomain(host: string): string | null {
   return null;
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  // 1. Refresh Supabase auth session
+  const sessionResponse = await updateSession(request)
+
   const host = request.headers.get("host") ?? "";
   const { pathname, search } = request.nextUrl;
 
@@ -65,18 +71,18 @@ export function proxy(request: NextRequest) {
     pathname.startsWith("/api/") ||
     pathname.includes(".")
   ) {
-    return NextResponse.next();
+    return sessionResponse;
   }
 
   const username = extractSubdomain(host);
 
   if (!username) {
-    return NextResponse.next();
+    return sessionResponse;
   }
 
   // Already prefixed with username? Don't double-rewrite
   if (pathname.startsWith(`/${username}`)) {
-    return NextResponse.next();
+    return sessionResponse;
   }
 
   // Rewrite: /some-path → /username/some-path
@@ -84,6 +90,10 @@ export function proxy(request: NextRequest) {
   url.pathname = `/${username}${pathname === "/" ? "" : pathname}`;
 
   const response = NextResponse.rewrite(url);
+  // Copy over any cookies set by Supabase session refresh
+  sessionResponse.cookies.getAll().forEach(({ name, value }) => {
+    response.cookies.set(name, value);
+  });
   response.headers.set("x-username", username);
   response.headers.set("x-original-path", pathname + search);
 
