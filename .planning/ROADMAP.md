@@ -1,3 +1,5 @@
+<!-- Status updated 2026-03-15: Phases 1-13 COMPLETE. Phase 14 = Supabase migration, Phase 15 = Integration -->
+
 # Roadmap: Character-Websites
 
 ## Overview

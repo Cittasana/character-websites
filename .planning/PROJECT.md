@@ -71,9 +71,9 @@ Three parallel build tracks, each with dedicated agent team:
 
 ## Constraints
 
-- **Tech Stack**: Python 3.11+ / FastAPI (backend), Next.js 14+ (frontend), PostgreSQL 15+ with pgvector — locked per PRD
+- **Tech Stack**: Python 3.11+ / FastAPI (backend), Next.js 14+ (frontend), Supabase (PostgreSQL + RLS + pgvector + Auth + Storage) — locked
 - **AI Engine**: Claude API `claude-sonnet-4-20250514` for personality analysis
-- **Deployment**: Docker + Nginx on Railway
+- **Deployment**: Vercel (frontend + API routes), Supabase Edge Functions (async Claude analysis jobs)
 - **Timeline**: 4 weeks to V1 (each track has weekly milestones)
 - **Privacy**: Voice data never exposed to public APIs; raw audio auto-deletable after analysis
 - **Security**: RLS at DB level — application-layer breach cannot access other users' data
