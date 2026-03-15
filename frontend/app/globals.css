@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* ── Base CSS custom properties ────────────────────────────────────────────── */
+/* These are overridden per-user by the design token injection in server layout */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 16px;
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background, #ffffff);
+    color: var(--color-text-primary, #1e293b);
+    font-family: var(--font-body, system-ui, sans-serif);
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display, inherit);
+    font-weight: var(--font-weight-display, 700);
+    line-height: 1.2;
+    color: var(--color-text-primary, inherit);
+    margin: 0;
+  }
+
+  p {
+    margin: 0;
+    font-weight: var(--font-weight-body, 400);
+  }
+
+  a {
+    color: var(--color-accent, inherit);
+    text-decoration: none;
+  }
+
+  img, video {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+}
+
+/* ── Utility classes using CSS custom properties ─────────────────────────── */
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: var(--font-weight-display);
+  }
+
+  .font-body {
+    font-family: var(--font-body);
+    font-weight: var(--font-weight-body);
+  }
+
+  .text-persona-primary   { color: var(--color-primary); }
+  .text-persona-secondary { color: var(--color-secondary); }
+  .text-persona-accent    { color: var(--color-accent); }
+
+  .bg-persona-background { background-color: var(--color-background); }
+  .bg-persona-surface    { background-color: var(--color-surface); }
+  .bg-persona-primary    { background-color: var(--color-primary); }
+  .bg-persona-accent     { background-color: var(--color-accent); }
+
+  .border-persona { border-color: var(--color-border); }
+
+  .shadow-persona-sm { box-shadow: var(--shadow-sm); }
+  .shadow-persona-md { box-shadow: var(--shadow-md); }
+  .shadow-persona-lg { box-shadow: var(--shadow-lg); }
+
+  .radius-persona-sm  { border-radius: var(--radius-sm); }
+  .radius-persona-md  { border-radius: var(--radius-md); }
+  .radius-persona-lg  { border-radius: var(--radius-lg); }
+  .radius-persona-full { border-radius: var(--radius-full); }
+
+  .section-padding {
+    padding-top: var(--section-padding-y);
+    padding-bottom: var(--section-padding-y);
+  }
+
+  .gap-persona-sm { gap: var(--gap-sm); }
+  .gap-persona-md { gap: var(--gap-md); }
+  .gap-persona-lg { gap: var(--gap-lg); }
+
+  .text-persona-xs   { font-size: var(--text-xs); }
+  .text-persona-sm   { font-size: var(--text-sm); }
+  .text-persona-base { font-size: var(--text-base); }
+  .text-persona-lg   { font-size: var(--text-lg); }
+  .text-persona-xl   { font-size: var(--text-xl); }
+  .text-persona-2xl  { font-size: var(--text-2xl); }
+  .text-persona-3xl  { font-size: var(--text-3xl); }
+  .text-persona-4xl  { font-size: var(--text-4xl); }
+  .text-persona-5xl  { font-size: var(--text-5xl); }
+}
+
+/* ── Waveform canvas ─────────────────────────────────────────────────────── */
+.waveform-canvas {
+  width: 100%;
+  height: 64px;
+  display: block;
+  cursor: pointer;
+}
+
+/* ── Scrollbar theming ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-background); }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full, 4px);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-secondary); }
