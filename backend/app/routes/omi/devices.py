@@ -25,6 +25,14 @@ router = APIRouter(prefix="/api/omi", tags=["omi"])
 class DevicePairRequest(BaseModel):
     device_id: str
     omi_access_token: str
+    omi_uid: str | None = None
+    omi_refresh_token: str | None = None
+    token_expires_at: str | None = None
+    paired_at: str | None = None
+    last_seen: str | None = None
+    battery_level: int | None = None
+    is_active: bool = True
+    user_id: str | None = None  # ignored — taken from JWT
 
 
 class DevicePairResponse(BaseModel):
@@ -32,10 +40,21 @@ class DevicePairResponse(BaseModel):
     device_id: str
     paired: bool
     paired_at: str | None
+    omi_uid: str | None = None
+    omi_refresh_token: str | None = None
+    token_expires_at: str | None = None
+    last_seen: str | None = None
+    battery_level: int | None = None
+    is_active: bool = True
 
 
 class DeviceUpdateRequest(BaseModel):
-    omi_access_token: str
+    omi_access_token: str | None = None
+    omi_refresh_token: str | None = None
+    token_expires_at: str | None = None
+    last_seen: str | None = None
+    battery_level: int | None = None
+    is_active: bool | None = None
 
 
 class SyncStatusResponse(BaseModel):
@@ -62,13 +81,13 @@ async def pair_device(
     user_id = str(current_user.id)
     supabase = get_supabase()
 
-    # Upsert into users table (device_id + omi_access_token columns)
     now = datetime.now(tz=timezone.utc).isoformat()
     supabase.table("users").update(
         {
             "omi_device_id": body.device_id,
             "omi_access_token": body.omi_access_token,
-            "omi_paired_at": now,
+            "omi_paired_at": body.paired_at or now,
+            "last_sync_at": body.last_seen,
         }
     ).eq("id", user_id).execute()
 
@@ -76,7 +95,13 @@ async def pair_device(
         user_id=uuid.UUID(user_id),
         device_id=body.device_id,
         paired=True,
-        paired_at=now,
+        paired_at=body.paired_at or now,
+        omi_uid=body.omi_uid,
+        omi_refresh_token=body.omi_refresh_token,
+        token_expires_at=body.token_expires_at,
+        last_seen=body.last_seen,
+        battery_level=body.battery_level,
+        is_active=body.is_active,
     )
 
 
@@ -94,7 +119,7 @@ async def get_device_status(
 
     supabase = get_supabase()
     result = supabase.table("users").select(
-        "id, omi_device_id, omi_paired_at"
+        "id, omi_device_id, omi_access_token, last_sync_at, sync_enabled"
     ).eq("id", str(user_id)).single().execute()
 
     if not result.data:
@@ -106,7 +131,9 @@ async def get_device_status(
         user_id=user_id,
         device_id=device_id,
         paired=bool(device_id),
-        paired_at=data.get("omi_paired_at"),
+        paired_at=None,  # not stored separately — use last_sync_at as proxy
+        last_seen=data.get("last_sync_at"),
+        is_active=data.get("sync_enabled", True),
     )
 
 
@@ -126,24 +153,32 @@ async def update_device_token(
     supabase = get_supabase()
     now = datetime.now(tz=timezone.utc).isoformat()
 
-    supabase.table("users").update(
-        {
-            "omi_access_token": body.omi_access_token,
-            "omi_paired_at": now,
-        }
-    ).eq("id", str(user_id)).execute()
+    update_fields: dict = {}
+    if body.omi_access_token is not None:
+        update_fields["omi_access_token"] = body.omi_access_token
+    if body.last_seen is not None:
+        update_fields["last_sync_at"] = body.last_seen
+    if body.is_active is not None:
+        update_fields["sync_enabled"] = body.is_active
 
-    # Fetch updated device_id
-    result = supabase.table("users").select("omi_device_id").eq(
-        "id", str(user_id)
-    ).single().execute()
+    if update_fields:
+        supabase.table("users").update(update_fields).eq("id", str(user_id)).execute()
 
-    device_id = result.data.get("omi_device_id", "") if result.data else ""
+    result = supabase.table("users").select(
+        "omi_device_id, last_sync_at, sync_enabled"
+    ).eq("id", str(user_id)).single().execute()
+    data = result.data or {}
+
     return DevicePairResponse(
         user_id=user_id,
-        device_id=device_id or "",
-        paired=True,
-        paired_at=now,
+        device_id=data.get("omi_device_id") or "",
+        paired=bool(data.get("omi_device_id")),
+        paired_at=None,
+        omi_refresh_token=body.omi_refresh_token,
+        token_expires_at=body.token_expires_at,
+        last_seen=data.get("last_sync_at"),
+        battery_level=body.battery_level,
+        is_active=data.get("sync_enabled", True),
     )
 
 
