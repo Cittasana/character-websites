@@ -160,9 +160,11 @@ class OmiOAuthClient:
             "grant_type": "authorization_code",
             "code": code,
             "client_id": self.settings.OMI_CLIENT_ID,
-            "client_secret": self.settings.OMI_CLIENT_SECRET,
             "redirect_uri": self.settings.OMI_OAUTH_REDIRECT_URI,
         }
+        # client_secret is optional for Omi public apps
+        if self.settings.OMI_CLIENT_SECRET:
+            payload["client_secret"] = self.settings.OMI_CLIENT_SECRET
 
         logger.info("Exchanging OAuth authorization code for tokens")
 

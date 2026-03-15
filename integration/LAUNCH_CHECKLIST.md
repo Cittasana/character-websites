@@ -23,8 +23,8 @@
 - [ ] demo.characterwebsites.com resolves and renders correctly
 
 ## Omi Integration
-- [ ] Omi OAuth app registered (get client_id + client_secret)
-- [ ] OMI_CLIENT_ID + OMI_CLIENT_SECRET set in production env
+- [x] Omi App ID registered: 01KKSDZ90V6G699A82QY8PW5Z2
+- [x] OMI_APP_ID + OMI_CLIENT_ID set (01KKSDZ90V6G699A82QY8PW5Z2) — client_secret optional for public app
 - [ ] Device pairing tested with real Omi device
 
 ## Security
