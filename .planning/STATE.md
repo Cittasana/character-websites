@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-15)
 
 ## Current Position
 
-Phase: 14 of 15 (Supabase + Vercel Migration)
+Phase: 15 of 15 (Integration & E2E)
 Plan: Not started
-Status: Phases 1-13 complete — ready for Supabase migration
-Last activity: 2026-03-15 — All 3 teams completed (63 backend files, full frontend, 73/73 Omi tests)
+Status: Phase 14 complete — ready for integration
+Last activity: 2026-03-15 — Supabase migration done (backend + frontend)
 
-Progress: ██████████░ 87%
+Progress: ████████████░ 93%
 
 ## Performance Metrics
 
