@@ -16,7 +16,7 @@ anthropic==0.28.0
 
 # Audio Analysis
 librosa==0.10.2
-soundfile==0.12.1
+soundfile==0.13.1
 numpy==1.26.4
 
 # Rate Limiting
