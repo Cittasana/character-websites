@@ -1,6 +1,7 @@
 """
 Tests for magic-byte file type validation.
 """
+import io
 import pytest
 
 from app.file_validation import validate_voice_file, validate_photo_file
@@ -19,13 +20,23 @@ def _make_fake_wav() -> bytes:
 
 
 def _make_fake_jpeg() -> bytes:
-    """JPEG files start with FF D8 FF."""
-    return b"\xFF\xD8\xFF\xE0" + b"\x00" * 100
+    """Generate a minimal valid JPEG image."""
+    from PIL import Image
+
+    img = Image.new("RGB", (2, 2), color=(255, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    return buf.getvalue()
 
 
 def _make_fake_png() -> bytes:
-    """PNG files start with specific 8-byte signature."""
-    return b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+    """Generate a minimal valid PNG image."""
+    from PIL import Image
+
+    img = Image.new("RGBA", (2, 2), color=(0, 255, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _make_fake_text() -> bytes:
