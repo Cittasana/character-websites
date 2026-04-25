@@ -44,7 +44,7 @@ jobs:
       APP_ENV: test
       DEBUG: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install system deps (libmagic, ffmpeg)
         run: |
@@ -99,7 +99,7 @@ jobs:
       OMI_CLIENT_SECRET: test-client-secret
       OMI_OAUTH_REDIRECT_URI: http://localhost/api/omi/callback
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install system deps (ffmpeg, libsndfile)
         run: |
@@ -155,7 +155,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
       NEXT_PUBLIC_API_URL: http://localhost:8000
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
