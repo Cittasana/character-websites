@@ -15,7 +15,7 @@ flower==2.0.1
 anthropic==0.28.0
 
 # Audio Analysis
-librosa==0.10.2
+librosa==0.11.0
 soundfile==0.12.1
 numpy==1.26.4
 
