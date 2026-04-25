@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import structlog
+from fastapi.encoders import jsonable_encoder
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -115,9 +116,17 @@ def create_app() -> FastAPI:
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        # Pydantic can include raw ValueError objects in `ctx`; encode safely.
+        safe_errors = jsonable_encoder(
+            exc.errors(),
+            custom_encoder={
+                ValueError: lambda e: str(e),
+                Exception: lambda e: str(e),
+            },
+        )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": exc.errors(), "body": str(exc.body)},
+            content={"detail": safe_errors, "body": str(exc.body)},
         )
 
     # ── Health Check ───────────────────────────────────────────────────────
