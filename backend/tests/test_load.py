@@ -9,6 +9,9 @@ import json
 import random
 import uuid
 
+import pytest
+pytest.importorskip("locust")
+
 from locust import HttpUser, TaskSet, between, task
 
 

@@ -35,6 +35,7 @@ export function AudioPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration ?? 0);
   const [error, setError] = useState<string | null>(null);
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -56,6 +57,7 @@ export function AudioPlayer({
     audioCtxRef.current = ctx;
     analyserRef.current = analyser;
     sourceRef.current = source;
+    setAnalyserNode(analyser);
   }, []);
 
   const togglePlay = useCallback(async () => {
@@ -163,7 +165,7 @@ export function AudioPlayer({
         aria-valuemax={totalDuration}
       >
         <WaveformVisualizer
-          analyserNode={analyserRef.current}
+          analyserNode={analyserNode}
           isPlaying={isPlaying}
           staticData={waveformData}
         />
