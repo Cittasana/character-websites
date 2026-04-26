@@ -1,0 +1,12 @@
+# Railway: Root Directory „backend“. Nur für den HTTP-API-Service.
+# Celery-Worker: im Dashboard „Config as code“ → Datei „/backend/railway.celery.toml“ (kein /health).
+# https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "DOCKERFILE"
+watchPatterns = ["app/**", "requirements.txt", "Dockerfile"]
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

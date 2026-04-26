@@ -37,8 +37,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Verify secret
-  const expectedSecret = process.env.ISR_REVALIDATION_SECRET;
+  // Verify secret (ISR_REVALIDATION_SECRET bevorzugt; REVALIDATION_SECRET = kompatibel zu .env.example / Templates)
+  const expectedSecret =
+    process.env.ISR_REVALIDATION_SECRET ?? process.env.REVALIDATION_SECRET;
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json(
       { error: "Invalid revalidation secret" },
