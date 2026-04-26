@@ -1,18 +1,24 @@
 import type { Metadata } from "next";
-import { Inter, Instrument_Serif } from "next/font/google";
+import { Outfit, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { buildFallbackTokens } from "@/lib/tokens";
 
-const inter = Inter({
+const display = Outfit({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-display",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+});
+
+const body = Geist({
+  subsets: ["latin"],
+  variable: "--font-body",
   display: "swap",
 });
 
-const serif = Instrument_Serif({
+const mono = Geist_Mono({
   subsets: ["latin"],
-  weight: "400",
-  variable: "--font-serif",
+  variable: "--font-mono",
   display: "swap",
 });
 
@@ -29,17 +35,17 @@ export default function RootLayout({
   const fallbackCss = buildFallbackTokens();
 
   return (
-    <html lang="en" className={`${inter.variable} ${serif.variable}`}>
+    <html
+      lang="en"
+      className={`${display.variable} ${body.variable} ${mono.variable}`}
+    >
       <head>
-        {/* Inject fallback design tokens — character pages override with their own */}
         <style
           id="design-tokens-fallback"
           dangerouslySetInnerHTML={{ __html: fallbackCss }}
         />
       </head>
-      <body className="antialiased">
-        {children}
-      </body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
