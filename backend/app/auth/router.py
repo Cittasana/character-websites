@@ -122,9 +122,13 @@ async def register(
 
     session = auth_response.session
     if session is None:
+        # Supabase liefert oft keine Session, solange „E-Mail bestätigen“ aktiv ist — kein 2xx ohne Token-Body
         raise HTTPException(
-            status_code=status.HTTP_201_CREATED,
-            detail="Account created. Please verify your email before logging in.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Konto angelegt — bitte zuerst den Bestätigungslink in der E-Mail öffnen, "
+                "danach anmelden."
+            ),
         )
 
     return TokenResponse(

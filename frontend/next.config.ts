@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
         hostname: "**.s3.amazonaws.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+        pathname: "/storage/v1/object/**",
+      },
     ],
   },
   experimental: {
