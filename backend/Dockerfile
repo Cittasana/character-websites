@@ -54,25 +54,28 @@ COPY app/ ./app/
 USER appuser
 
 # ── Environment defaults (override at runtime) ────────────────────────────────
+# PORT wird von Railway gesetzt; lokal z. B. 8000
 ENV APP_ENV=production \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PORT=8000
 
-# Expose port
+SHELL ["/bin/sh", "-c"]
+
+# Expose (Hinweis für lokal; Railway setzt die öffentliche Port-Weiterleitung über $PORT)
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Health check (läuft mit Shell, damit $PORT expandiert)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 
-# ── Default: run FastAPI with Uvicorn (multi-worker) ─────────────────────────
-CMD ["uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "4", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--log-level", "info", \
-     "--access-log", \
-     "--proxy-headers", \
-     "--forwarded-allow-ips", "*"]
+# Uvicorn: $PORT für Railway / PaaS; weniger Worker = weniger RAM auf kleinen Plänen
+CMD uvicorn app.main:app \
+     --host 0.0.0.0 \
+     --port "${PORT}" \
+     --workers 2 \
+     --log-level info \
+     --access-log \
+     --proxy-headers \
+     --forwarded-allow-ips '*'

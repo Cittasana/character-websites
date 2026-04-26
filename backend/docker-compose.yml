@@ -39,6 +39,7 @@ services:
     container_name: cw_api
     restart: unless-stopped
     env_file:
+      - .env
       - .env.local
     environment:
       SUPABASE_URL: ${SUPABASE_URL}
@@ -81,6 +82,7 @@ services:
     container_name: cw_celery_worker
     restart: unless-stopped
     env_file:
+      - .env
       - .env.local
     environment:
       SUPABASE_URL: ${SUPABASE_URL}
