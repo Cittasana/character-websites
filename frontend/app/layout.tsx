@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Outfit, Geist, Geist_Mono } from "next/font/google";
+import { Outfit, Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import { buildFallbackTokens } from "@/lib/tokens";
 
@@ -22,6 +22,14 @@ const mono = Geist_Mono({
   display: "swap",
 });
 
+const editorial = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-editorial",
+  display: "swap",
+  style: ["normal", "italic"],
+  axes: ["SOFT", "opsz"],
+});
+
 export const metadata: Metadata = {
   title: "Character Website",
   description: "Your personality-driven personal website",
@@ -37,7 +45,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${display.variable} ${body.variable} ${mono.variable}`}
+      className={`${display.variable} ${body.variable} ${mono.variable} ${editorial.variable}`}
     >
       <head>
         <style

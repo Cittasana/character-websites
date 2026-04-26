@@ -3,6 +3,7 @@
 @theme {
   --font-sans: var(--font-body), system-ui, sans-serif;
   --font-display: var(--font-display), system-ui, sans-serif;
+  --font-editorial: var(--font-editorial), Georgia, "Times New Roman", serif;
   --font-mono: var(--font-mono), ui-monospace, "SFMono-Regular", monospace;
 }
 

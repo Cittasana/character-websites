@@ -1,494 +1,728 @@
-/**
- * Landing page — served at the root domain (not a character site).
- * Editorial premium presentation of the Character Websites product.
- */
-
+import Image from "next/image";
 import Link from "next/link";
+import { Waveform } from "./_landing/Waveform";
 
-const PROCESS_STEPS = [
+const VOICES = [
   {
-    n: "01",
-    title: "Omi-Recorder erfasst die Person",
-    body:
-      "Der Nutzer trägt ein Omi-Wearable. Es nimmt im Hintergrund auf — in Meetings, Gesprächen, Gedanken. Keine künstliche „Ich stelle mich jetzt vor“-Session. Das System bekommt echte verbale Daten: Tonalität, Rhythmus, Wortwahl, emotionale Kadenz.",
-    stack: ["Omi SDK", "librosa acoustic analysis", "Whisper fallback"],
+    name: "Mariama Diallo-Ferreira",
+    role: "Architektin · Lissabon",
+    tone: "leise, präzise, oft halblachend",
+    quote:
+      "Ich rede mit meinen Bauplänen, ehrlich. Ich frage sie, was sie wollen. Das klingt verrückt, ich weiß. Aber dann antworten sie tatsächlich.",
+    accent: "rgba(180, 90, 60, 0.9)",
   },
   {
-    n: "02",
-    title: "Hive Mind verarbeitet und speichert",
-    body:
-      "Aufnahmen landen verschlüsselt in Supabase Storage. Celery-Jobs verarbeiten sie asynchron: Transkription, Akustik-Extraktion, dann Claude-Analyse. Das Ergebnis ist ein strukturiertes Persönlichkeits-Schema — 7 Dimensionen plus Persona-Blend-Gewichte — als Vektor-Embedding in pgvector.",
-    stack: ["Supabase pgvector", "Celery + Redis", "Claude Sonnet"],
+    name: "Söhnke Brüggemann",
+    role: "Cellist · Hamburg",
+    tone: "ruhig, mit kurzen Pausen vor wichtigen Wörtern",
+    quote:
+      "Eine Website ist auch nur ein Instrument. Sie muss gestimmt sein. Wenn das Holz nicht zu mir gehört, höre ich es sofort.",
+    accent: "rgba(110, 96, 80, 0.9)",
   },
   {
-    n: "03",
-    title: "Website rendert sich aus der Persönlichkeit",
-    body:
-      "Das Schema treibt alles: Farben, Typografie, Layout-Dichte, Asymmetrie, Animationen. Vier Kern-Personas — Minimalist-Refined, Maximalist-Bold, Organic-Warm, Structured-Professional — werden gewichtet gemischt. Jede Website ist einzigartig, weil die Persönlichkeit das Design vorschreibt.",
-    stack: ["Next.js 14 App Router", "Compositional Persona Blending", "ISR ≤ 60s"],
-  },
-  {
-    n: "04",
-    title: "Besucher interagieren mit der echten Person",
-    body:
-      "Ein Recruiter öffnet cosmo.characterwebsites.com und tippt eine Frage. Das System sucht semantisch in den Transkripten, findet die relevantesten echten Aussagen, und antwortet — synthetisiert in ihrer Stimme. Kein generischer Chatbot. Eine Antwort aus echten Worten.",
-    stack: ["Voice Q&A", "Semantic Search via pgvector", "Voice Synthesis"],
+    name: "Yuki Tanaka-Holm",
+    role: "Strategin · Kopenhagen",
+    tone: "schnell denkend, abrupte Wendungen, warmes Lachen",
+    quote:
+      "Ich will nicht, dass sie meinen Lebenslauf lesen. Ich will, dass sie hören, wie ich denke — auch wenn ich gerade falsch denke.",
+    accent: "rgba(70, 90, 70, 0.9)",
   },
 ];
 
-const USE_CASES = [
+const MOMENTS = [
   {
-    tag: "V1",
-    label: "CV Mode",
+    label: "Eine Stimme",
     body:
-      "Bewerbungen und Professional Branding. Hero, Persönlichkeits-Insights, Experience-Timeline, Employer Q&A Widget, Kalender-Booking. Der Recruiter interagiert mit der echten Persönlichkeit des Bewerbers.",
+      "Du sprichst — beim Kaffee, im Auto, beim Spazieren. Nicht in ein Mikro. Einfach so. Das kleine Gerät hört zu.",
   },
   {
-    tag: "V1",
-    label: "Dating Mode",
+    label: "Eine Form",
     body:
-      "Avatar Gallery, Voice Clips Player mit Web Audio Waveform, Personality Scores für Warmth, Humor, Ambition, Adventure, Values Section. Authentizität statt kuratierter Hochglanz-Profile.",
+      "Aus deinem Tonfall, deinen Pausen, deiner Wortwahl entsteht eine eigene Gestalt — Farben, Schriften, Rhythmus. Niemand sonst klingt wie du.",
   },
   {
-    tag: "V2",
-    label: "Legacy Mode",
+    label: "Ein Ort",
     body:
-      "Digitales Vermächtnis. Kinder sprechen in 20 Jahren mit dem Hive Mind ihrer Eltern. Die verbale Essenz einer Person bleibt erhalten. Der eigentliche emotionale Kaufgrund.",
+      "Eine Webseite, die nicht aussieht wie du sie haben willst, sondern wie du tatsächlich klingst, wenn keiner zuschaut.",
+  },
+  {
+    label: "Eine Begegnung",
+    body:
+      "Wenn jemand sie öffnet, spricht sie mit deiner Stimme zurück. Mit Worten, die du wirklich gesagt hast. Nicht synthetisch. Ehrlich.",
   },
 ];
 
-const HIVE_LAYERS = [
+const MODES = [
   {
-    n: "Schicht 01",
-    label: "Operativ — Strukturierte Fakten",
-    body: "Relationale Daten, schnell abrufbar, RLS-gesichert. Supabase Postgres.",
-    items: [
-      "User-Profile, Auth, Subdomains",
-      "CV-Daten, Skills, Projekte",
-      "Website-Configs, Persona-Gewichte",
-      "Audit Logs aller Ingest-Events",
-      "Voice Recordings (verschlüsselt, Supabase Storage)",
-    ],
+    badge: "Bewerbung",
+    title: "Wer du beruflich bist.",
+    body:
+      "Eine ruhige Seite, die deine Gedanken zeigt — nicht deine Buzzwords. Recruiter stellen Fragen, deine Stimme antwortet.",
+    palette: ["#1c1410", "#b45a3c", "#e8dccb"],
+    sample: {
+      label: "CV · Mariama",
+      lines: ["Wie löst sie Konflikte im Team?", "Was war 2023 die schwierigste Entscheidung?"],
+    },
   },
   {
-    n: "Schicht 02",
-    label: "Qualitativ — Verbale Essenz",
-    body: "Vektor-Embeddings, semantisch durchsuchbar. pgvector in Supabase.",
-    items: [
-      "Transkript-Chunks als Embeddings",
-      "7-Dimensionen Persönlichkeits-Schema (versioniert)",
-      "Akustik-Metadaten: Pitch, Rhythmus, Kadenz",
-      "Persona Blend Weights (historisch)",
-      "Similarity Search für Voice Q&A",
-    ],
+    badge: "Begegnung",
+    title: "Wer du privat bist.",
+    body:
+      "Statt Hochglanz-Profil-Fotos und Bullet-Points: deine echten Momente. Ein Sprachclip, ein Gedanke, ein Lachen.",
+    palette: ["#2a1f1a", "#c97350", "#f0ebe0"],
+    sample: {
+      label: "Begegnung · Söhnke",
+      lines: ["Hört Bach, kocht improvisierend.", "Sucht jemanden, der Stille aushält."],
+    },
+  },
+  {
+    badge: "Vermächtnis",
+    title: "Wer du bleibst.",
+    body:
+      "Eines Tages wird jemand mit dir sprechen wollen, der dich nicht mehr fragen kann. Diese Seite weiß noch, wie du klangst.",
+    palette: ["#15110d", "#7a6a55", "#ddd2bf"],
+    sample: {
+      label: "Vermächtnis · Yuki",
+      lines: [
+        '„Erzähl mir, wie sie über Mut sprach."',
+        "47 Stunden Aufnahmen · 2024–2031",
+      ],
+    },
   },
 ];
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[#fafaf7] text-neutral-900 antialiased selection:bg-neutral-900 selection:text-[#fafaf7]">
-      {/* ── Top nav ─────────────────────────────────────────────────────── */}
-      <header className="border-b border-neutral-900/10">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-5 md:px-12">
-          <div className="flex items-baseline gap-3">
-            <span className="text-[13px] font-semibold uppercase tracking-[0.18em]">
-              Character Websites
-            </span>
-            <span className="hidden text-[11px] uppercase tracking-[0.2em] text-neutral-500 md:inline">
-              Cittasana AI · 2026
-            </span>
-          </div>
-          <nav className="flex items-center gap-2">
-            <Link
-              href="/auth/login"
-              className="px-3 py-2 text-[13px] font-medium uppercase tracking-[0.14em] text-neutral-700 hover:text-neutral-900"
-            >
-              Anmelden
-            </Link>
+    <main className="min-h-[100dvh] bg-[#faf7f2] text-[#1c1410] antialiased selection:bg-[#1c1410] selection:text-[#faf7f2]">
+      {/* Subtle grain — fixed, no GPU repaint on scroll */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-50 opacity-[0.025] mix-blend-multiply"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")",
+        }}
+      />
+
+      <TopBar />
+
+      <Hero />
+
+      <Pullquote />
+
+      <Voices />
+
+      <FourMoments />
+
+      <SoundSection />
+
+      <Modes />
+
+      <DeviceSection />
+
+      <FinalCTA />
+
+      <Footer />
+    </main>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function TopBar() {
+  return (
+    <header className="border-b border-[#1c1410]/10">
+      <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-5 md:px-12">
+        <Link href="/" className="flex items-baseline gap-3">
+          <span className="font-editorial text-[18px] tracking-tight">
+            Character Works
+          </span>
+          <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-[#1c1410]/50 md:inline">
+            seit 2026
+          </span>
+        </Link>
+        <nav className="flex items-center gap-1">
+          <Link
+            href="#stimmen"
+            className="hidden px-3 py-2 text-[13px] text-[#1c1410]/70 transition hover:text-[#1c1410] md:inline-flex"
+          >
+            Drei Stimmen
+          </Link>
+          <Link
+            href="#momente"
+            className="hidden px-3 py-2 text-[13px] text-[#1c1410]/70 transition hover:text-[#1c1410] md:inline-flex"
+          >
+            Wie es entsteht
+          </Link>
+          <Link
+            href="#modi"
+            className="hidden px-3 py-2 text-[13px] text-[#1c1410]/70 transition hover:text-[#1c1410] md:inline-flex"
+          >
+            Drei Räume
+          </Link>
+          <Link
+            href="/auth/login"
+            className="ml-2 px-3 py-2 text-[13px] text-[#1c1410]/70 transition hover:text-[#1c1410]"
+          >
+            Anmelden
+          </Link>
+          <Link
+            href="/auth/register"
+            className="ml-1 rounded-full bg-[#1c1410] px-5 py-2.5 text-[13px] font-medium text-[#faf7f2] transition hover:bg-[#3a2a20] active:translate-y-[1px]"
+          >
+            Anfangen
+          </Link>
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function Hero() {
+  return (
+    <section className="border-b border-[#1c1410]/10">
+      <div className="mx-auto grid max-w-[1400px] grid-cols-12 gap-6 px-6 pb-20 pt-16 md:gap-10 md:px-12 md:pb-32 md:pt-24">
+        <div className="col-span-12 flex flex-col justify-end lg:col-span-5">
+          <p className="mb-8 inline-flex items-center gap-2 self-start font-mono text-[11px] uppercase tracking-[0.2em] text-[#1c1410]/55">
+            <span className="size-1 rounded-full bg-[#b45a3c]" />
+            Eine ruhige Einladung
+          </p>
+
+          <h1 className="font-editorial text-[clamp(3rem,8vw,6.5rem)] font-light leading-[0.95] tracking-[-0.025em]">
+            Eine Webseite,
+            <br />
+            die
+            <span className="italic text-[#b45a3c]"> klingt</span>
+            <br />
+            wie du.
+          </h1>
+
+          <p className="mt-10 max-w-[42ch] text-[17px] leading-[1.65] text-[#1c1410]/75 md:text-[18.5px]">
+            Die meisten Online-Profile zeigen, wer wir sein wollen. Diese hier
+            zeigt, wer wir tatsächlich sind — in echten Worten, in echten
+            Pausen, mit echtem Atem dazwischen.
+          </p>
+
+          <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4">
             <Link
               href="/auth/register"
-              className="bg-neutral-900 px-5 py-2.5 text-[13px] font-medium uppercase tracking-[0.14em] text-[#fafaf7] transition-colors hover:bg-neutral-700"
+              className="group inline-flex items-center gap-3 rounded-full bg-[#1c1410] px-6 py-3.5 text-[14px] font-medium text-[#faf7f2] transition hover:bg-[#3a2a20] active:translate-y-[1px]"
             >
-              Loslegen
+              Eine Stimme aufnehmen
+              <span className="font-mono text-[11px] tracking-wide text-[#faf7f2]/70 transition group-hover:translate-x-0.5">
+                →
+              </span>
             </Link>
-          </nav>
-        </div>
-      </header>
-
-      {/* ── Hero ───────────────────────────────────────────────────────── */}
-      <section className="border-b border-neutral-900/10">
-        <div className="mx-auto max-w-[1400px] px-6 pt-20 pb-24 md:px-12 md:pt-32 md:pb-40">
-          <div className="grid grid-cols-12 gap-6 md:gap-10">
-            <div className="col-span-12 md:col-span-2">
-              <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-neutral-500">
-                Project Brief
-              </div>
-              <div className="mt-2 text-[11px] uppercase tracking-[0.22em] text-neutral-500">
-                V1 · Ready
-              </div>
-            </div>
-
-            <div className="col-span-12 md:col-span-10">
-              <h1 className="font-serif text-[clamp(3rem,9vw,8.5rem)] leading-[0.92] tracking-[-0.04em]">
-                Premium Personal
-                <br />
-                <span className="italic text-neutral-500">Identity Engine.</span>
-              </h1>
-              <div className="mt-10 grid grid-cols-12 gap-6">
-                <p className="col-span-12 max-w-2xl text-[1.15rem] leading-[1.55] text-neutral-700 md:col-span-7 md:text-[1.35rem]">
-                  Eine Person spricht — in echten Momenten, ungefiltert — in das
-                  Omi-Wearable. Das System hört zu, versteht die verbale Essenz,
-                  und baut daraus eine lebendige Online-Präsenz. Keine
-                  Templates. Keine Curation. Nur echte Persönlichkeit.
-                </p>
-                <div className="col-span-12 md:col-span-5 md:border-l md:border-neutral-900/10 md:pl-8">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500">
-                    Investment
-                  </div>
-                  <div className="mt-2 font-serif text-4xl tracking-tight">
-                    EUR 1.000
-                  </div>
-                  <div className="mt-1 text-[13px] text-neutral-600">
-                    One-Time · keine laufenden Lizenzkosten
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-12 flex flex-wrap items-center gap-4">
-                <Link
-                  href="/auth/register"
-                  className="bg-neutral-900 px-7 py-4 text-[13px] font-medium uppercase tracking-[0.16em] text-[#fafaf7] transition-colors hover:bg-neutral-700"
-                >
-                  Persönlichkeit aufnehmen
-                </Link>
-                <Link
-                  href="#prozess"
-                  className="border border-neutral-900/20 px-7 py-4 text-[13px] font-medium uppercase tracking-[0.16em] text-neutral-900 transition-colors hover:border-neutral-900"
-                >
-                  Wie es funktioniert
-                </Link>
-              </div>
-            </div>
+            <Link
+              href="#stimmen"
+              className="text-[14px] text-[#1c1410]/70 underline-offset-4 transition hover:text-[#1c1410] hover:underline"
+            >
+              Erst mal still zuhören
+            </Link>
           </div>
         </div>
-      </section>
 
-      {/* ── Manifesto pull-quote ───────────────────────────────────────── */}
-      <section className="border-b border-neutral-900/10 bg-neutral-900 text-[#fafaf7]">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-36">
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 md:col-span-2">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">
-                Manifest
-              </div>
-            </div>
-            <blockquote className="col-span-12 font-serif text-[clamp(1.75rem,4.5vw,3.75rem)] leading-[1.1] tracking-[-0.02em] md:col-span-10">
-              <span className="text-neutral-500">„</span>
-              Authenticity over curation — the website grows with{" "}
-              <span className="italic">who you actually are,</span> not who you
-              want to appear to be.
-              <span className="text-neutral-500">&ldquo;</span>
-            </blockquote>
+        <figure className="col-span-12 lg:col-span-7">
+          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-sm bg-[#1c1410]/5">
+            <Image
+              src="/landing/hero-listening.jpg"
+              alt="Eine Frau sitzt am Fenster im warmen Nachmittagslicht, hält ein kleines Aufnahmegerät in der Hand."
+              fill
+              priority
+              sizes="(min-width: 1024px) 800px, 100vw"
+              className="object-cover"
+            />
           </div>
-        </div>
-      </section>
+          <figcaption className="mt-4 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.18em] text-[#1c1410]/55">
+            <span>Mariama · Donnerstag, 16:42</span>
+            <span>Ohne Mikrofon. Ohne Skript.</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── Wie es funktioniert ────────────────────────────────────────── */}
-      <section id="prozess" className="border-b border-neutral-900/10">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 md:col-span-3">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">
-                Prozess
-              </div>
-              <h2 className="mt-4 font-serif text-5xl leading-[0.95] tracking-tight md:text-6xl">
-                Wie es funktioniert.
-              </h2>
-            </div>
-            <div className="col-span-12 md:col-span-9">
-              <ol className="divide-y divide-neutral-900/10 border-y border-neutral-900/10">
-                {PROCESS_STEPS.map((step) => (
-                  <li
-                    key={step.n}
-                    className="grid grid-cols-12 gap-4 py-10 md:gap-6 md:py-12"
-                  >
-                    <div className="col-span-2 md:col-span-1">
-                      <div className="font-serif text-3xl text-neutral-400">
-                        {step.n}
-                      </div>
-                    </div>
-                    <div className="col-span-10 md:col-span-7">
-                      <h3 className="font-serif text-2xl leading-tight md:text-3xl">
-                        {step.title}
-                      </h3>
-                      <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
-                        {step.body}
-                      </p>
-                    </div>
-                    <div className="col-span-12 md:col-span-4">
-                      <ul className="space-y-1.5">
-                        {step.stack.map((s) => (
-                          <li
-                            key={s}
-                            className="text-[12px] uppercase tracking-[0.14em] text-neutral-500"
-                          >
-                            — {s}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function Pullquote() {
+  return (
+    <section className="bg-[#1c1410] text-[#faf7f2]">
+      <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12 md:col-span-2">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#faf7f2]/45">
+              Worum es geht
+            </p>
           </div>
+          <blockquote className="col-span-12 md:col-span-10">
+            <p className="font-editorial text-[clamp(1.75rem,4vw,3.5rem)] font-light leading-[1.18] tracking-[-0.015em]">
+              Ein Lebenslauf erzählt, was du gemacht hast.
+              <br />
+              Diese Seite hört, wie du es{" "}
+              <span className="italic text-[#d99878]">gemeint</span> hast.
+            </p>
+            <footer className="mt-10 flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.18em] text-[#faf7f2]/50">
+              <span className="block h-px w-10 bg-[#faf7f2]/30" />
+              Character Works · ein Versuch
+            </footer>
+          </blockquote>
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── Hive Mind Architektur ──────────────────────────────────────── */}
-      <section className="border-b border-neutral-900/10 bg-[#f0ede5]">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 md:col-span-4">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">
-                Architektur
-              </div>
-              <h2 className="mt-4 font-serif text-5xl leading-[0.95] tracking-tight md:text-6xl">
-                Hive Mind.
-              </h2>
-              <p className="mt-6 max-w-sm text-[15px] leading-relaxed text-neutral-700">
-                Der Hive Mind ersetzt die klassische Datenbank nicht — er liegt
-                darüber. Zwei Schichten plus eine Orchestrierungsebene.
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function Voices() {
+  return (
+    <section id="stimmen" className="border-b border-[#1c1410]/10">
+      <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
+        <header className="mb-12 grid grid-cols-12 gap-6 md:mb-16">
+          <div className="col-span-12 md:col-span-3">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#1c1410]/55">
+              Drei Stimmen
+            </p>
+          </div>
+          <div className="col-span-12 md:col-span-9">
+            <h2 className="font-editorial text-[clamp(2rem,5vw,3.75rem)] font-light leading-[1.05] tracking-[-0.015em]">
+              Wir haben drei Menschen
+              <br />
+              eine Woche lang
+              <span className="italic text-[#1c1410]/55"> einfach zugehört</span>.
+            </h2>
+            <p className="mt-6 max-w-[58ch] text-[16px] leading-[1.65] text-[#1c1410]/70">
+              Sie haben nichts vorbereitet. Keine Statements aufgesagt. Sie
+              haben gekocht, telefoniert, sich beschwert, gelacht, etwas
+              vergessen. Die Seiten, die daraus entstanden sind, klingen nach
+              ihnen — nicht nach uns.
+            </p>
+          </div>
+        </header>
+
+        <figure className="relative">
+          <div className="relative aspect-[24/11] w-full overflow-hidden rounded-sm bg-[#1c1410]/5">
+            <Image
+              src="/landing/three-personas.jpg"
+              alt="Triptychon dreier Menschen in ihren Arbeits- und Lebensräumen — eine Architektin, ein Cellist, eine Strategin."
+              fill
+              sizes="(min-width: 1024px) 1300px, 100vw"
+              className="object-cover"
+            />
+          </div>
+          <figcaption className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[#1c1410]/55">
+            Mariama · Söhnke · Yuki — drei Räume, drei Stimmen, drei Webseiten.
+          </figcaption>
+        </figure>
+
+        <div className="mt-16 grid grid-cols-12 gap-x-8 gap-y-12 md:mt-20">
+          {VOICES.map((voice) => (
+            <article
+              key={voice.name}
+              className="col-span-12 md:col-span-4 md:border-l md:border-[#1c1410]/10 md:pl-6"
+            >
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#1c1410]/55">
+                {voice.role}
               </p>
-            </div>
-
-            <div className="col-span-12 md:col-span-8">
-              <div className="grid grid-cols-1 gap-px bg-neutral-900/10 md:grid-cols-2">
-                {HIVE_LAYERS.map((layer) => (
-                  <div key={layer.n} className="bg-[#f0ede5] p-8">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                      {layer.n}
-                    </div>
-                    <h3 className="mt-2 font-serif text-2xl tracking-tight">
-                      {layer.label}
-                    </h3>
-                    <p className="mt-3 text-[14px] leading-relaxed text-neutral-700">
-                      {layer.body}
-                    </p>
-                    <ul className="mt-6 space-y-2 border-t border-neutral-900/10 pt-4">
-                      {layer.items.map((it) => (
-                        <li
-                          key={it}
-                          className="text-[13px] leading-relaxed text-neutral-800"
-                        >
-                          · {it}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-10 border border-neutral-900/15 bg-[#fafaf7] p-8">
-                <div className="flex items-baseline justify-between">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                    Orchestrierung
-                  </div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                    Celery + Redis · Async Job Queue
-                  </div>
-                </div>
-                <p className="mt-3 font-serif text-2xl leading-snug tracking-tight md:text-[1.75rem]">
-                  Omi liefert Audio → Celery transkribiert → librosa extrahiert
-                  Akustik → Claude analysiert → pgvector speichert → ISR
-                  invalidiert. Unter 60 Sekunden vom Upload bis zur
-                  aktualisierten Website.
-                </p>
-                <ul className="mt-6 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
-                  {[
-                    "Upload-Trigger → async Job",
-                    "Deduplication via Audio-Hash",
-                    "Retry-Logik built-in",
-                    "Redis cacht häufige Q&A-Antworten",
-                    "Schema-Versionierung (Persönlichkeits-Zeitlinie)",
-                    "ISR-Webhook bei Schema-Update",
-                  ].map((it) => (
-                    <li
-                      key={it}
-                      className="text-[13px] leading-relaxed text-neutral-700"
-                    >
-                      — {it}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
+              <h3 className="mt-2 font-editorial text-[26px] leading-tight tracking-tight">
+                {voice.name}
+              </h3>
+              <p
+                className="mt-2 font-editorial text-[14px] italic leading-snug"
+                style={{ color: voice.accent }}
+              >
+                Tonfall: {voice.tone}
+              </p>
+              <p className="mt-6 font-editorial text-[19px] font-light leading-[1.45] text-[#1c1410]/85">
+                <span className="text-[#1c1410]/40">&bdquo;</span>
+                {voice.quote}
+                <span className="text-[#1c1410]/40">&ldquo;</span>
+              </p>
+              <Waveform
+                className="mt-8 h-6 w-full text-[#1c1410]/35"
+                bars={84}
+                seed={voice.name.length * 31}
+              />
+              <p className="mt-3 font-mono text-[10px] tabular-nums text-[#1c1410]/50">
+                Aufnahme · 02:47 · 47.2 % der ungefilterten Probe
+              </p>
+            </article>
+          ))}
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── Use Cases ──────────────────────────────────────────────────── */}
-      <section className="border-b border-neutral-900/10">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">
-                Anwendungen
-              </div>
-              <h2 className="mt-4 font-serif text-5xl leading-[0.95] tracking-tight md:text-6xl">
-                Drei Modi.
-                <br />
-                <span className="italic text-neutral-500">Eine Identität.</span>
-              </h2>
-            </div>
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function FourMoments() {
+  return (
+    <section
+      id="momente"
+      className="border-b border-[#1c1410]/10 bg-[#f0ebe0]"
+    >
+      <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
+        <header className="mb-16 grid grid-cols-12 gap-6 md:mb-24">
+          <div className="col-span-12 md:col-span-4">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#1c1410]/55">
+              Wie es entsteht
+            </p>
+            <h2 className="mt-4 font-editorial text-[clamp(2rem,4.5vw,3.5rem)] font-light leading-[1.05] tracking-[-0.015em]">
+              Vier Momente.
+              <br />
+              <span className="italic text-[#b45a3c]">Mehr nicht.</span>
+            </h2>
           </div>
+          <p className="col-span-12 max-w-[48ch] text-[16px] leading-[1.7] text-[#1c1410]/70 md:col-span-7 md:col-start-6">
+            Wir haben uns gegen alles entschieden, was nach Software klingt.
+            Keine Dashboards, keine Schritte, keine Fortschrittsbalken. Nur das
+            hier, in der Reihenfolge, in der es passiert:
+          </p>
+        </header>
 
-          <div className="mt-16 grid grid-cols-1 gap-px bg-neutral-900/10 md:grid-cols-3">
-            {USE_CASES.map((uc) => (
-              <article key={uc.label} className="bg-[#fafaf7] p-8 md:p-10">
-                <div className="flex items-baseline justify-between">
-                  <h3 className="font-serif text-3xl tracking-tight">
-                    {uc.label}
-                  </h3>
-                  <span className="border border-neutral-900/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-neutral-700">
-                    {uc.tag}
-                  </span>
-                </div>
-                <p className="mt-6 text-[14px] leading-relaxed text-neutral-700">
-                  {uc.body}
-                </p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Status ─────────────────────────────────────────────────────── */}
-      <section className="border-b border-neutral-900/10">
-        <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-28">
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 md:col-span-3">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">
-                Stand · 2026
-              </div>
-              <h2 className="mt-4 font-serif text-5xl leading-[0.95] tracking-tight md:text-6xl">
-                Projekt&shy;status.
-              </h2>
-            </div>
-            <div className="col-span-12 grid grid-cols-2 gap-px bg-neutral-900/10 md:col-span-9 md:grid-cols-4">
-              {[
-                { kpi: "15/15", label: "Phasen abgeschlossen" },
-                { kpi: "3", label: "Parallel-Teams (Backend · Frontend · Omi)" },
-                { kpi: "6/6", label: "Integration Tests grün" },
-                { kpi: "≤ 60s", label: "Vom Upload zur Website" },
-              ].map((k) => (
-                <div key={k.label} className="bg-[#fafaf7] p-8">
-                  <div className="font-serif text-5xl tracking-tight">
-                    {k.kpi}
-                  </div>
-                  <div className="mt-3 text-[12px] uppercase tracking-[0.14em] text-neutral-500">
-                    {k.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-16 grid grid-cols-12 gap-6">
-            <div className="col-span-12 md:col-span-6">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                Sofort — Blocker lösen
-              </div>
-              <ul className="mt-4 divide-y divide-neutral-900/10 border-y border-neutral-900/10">
-                {[
-                  "Omi Developer Access beantragen (omi.me/developers)",
-                  "Wildcard DNS *.characterwebsites.com → Vercel",
-                  "ANTHROPIC_API_KEY + Supabase Keys in Vercel Env",
-                  "Supabase Migration: Backend auf supabase-py portieren",
-                ].map((it) => (
-                  <li
-                    key={it}
-                    className="py-3 text-[14px] leading-relaxed text-neutral-800"
-                  >
-                    {it}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="col-span-12 md:col-span-6">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
-                Hive Mind Upgrade — V1+
-              </div>
-              <ul className="mt-4 divide-y divide-neutral-900/10 border-y border-neutral-900/10">
-                {[
-                  "Schema-Versionierung (Persönlichkeits-Zeitlinie)",
-                  "Semantic Search aus echten Transkript-Chunks",
-                  "Redis Answer Pattern Caching",
-                  "Besucher-Kontext-Routing (Recruiter vs. Partner)",
-                ].map((it) => (
-                  <li
-                    key={it}
-                    className="py-3 text-[14px] leading-relaxed text-neutral-800"
-                  >
-                    {it}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Final CTA ──────────────────────────────────────────────────── */}
-      <section className="bg-neutral-900 text-[#fafaf7]">
-        <div className="mx-auto max-w-[1400px] px-6 py-28 md:px-12 md:py-40">
-          <div className="grid grid-cols-12 gap-6">
-            <div className="col-span-12 md:col-span-8">
-              <h2 className="font-serif text-[clamp(2.5rem,7vw,6rem)] leading-[0.95] tracking-[-0.03em]">
-                Deine Stimme.
-                <br />
-                <span className="italic text-neutral-500">
-                  Deine Persönlichkeit.
+        <ol className="grid grid-cols-12 gap-x-6 gap-y-12">
+          {MOMENTS.map((moment, idx) => (
+            <li
+              key={moment.label}
+              className="col-span-12 md:col-span-6 lg:col-span-3"
+            >
+              <div className="flex items-baseline gap-3">
+                <span className="font-mono text-[11px] tabular-nums text-[#1c1410]/45">
+                  {String(idx + 1).padStart(2, "0")}
                 </span>
-                <br />
-                Deine Website.
-              </h2>
-            </div>
-            <div className="col-span-12 flex flex-col justify-end md:col-span-4">
-              <p className="text-[15px] leading-relaxed text-neutral-400">
-                Beginne jetzt mit deiner ersten Aufnahme. Dein Hive Mind formt
-                sich mit jedem gesprochenen Wort.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link
-                  href="/auth/register"
-                  className="bg-[#fafaf7] px-7 py-4 text-[13px] font-medium uppercase tracking-[0.16em] text-neutral-900 transition-colors hover:bg-neutral-300"
-                >
-                  Loslegen
-                </Link>
-                <Link
-                  href="/auth/login"
-                  className="border border-[#fafaf7]/30 px-7 py-4 text-[13px] font-medium uppercase tracking-[0.16em] text-[#fafaf7] transition-colors hover:border-[#fafaf7]"
-                >
-                  Anmelden
-                </Link>
+                <span className="block h-px flex-1 bg-[#1c1410]/15" />
               </div>
+              <h3 className="mt-5 font-editorial text-[26px] font-light leading-tight tracking-tight">
+                {moment.label}
+              </h3>
+              <p className="mt-4 max-w-[32ch] text-[15px] leading-[1.65] text-[#1c1410]/72">
+                {moment.body}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function SoundSection() {
+  return (
+    <section className="border-b border-[#1c1410]/10">
+      <div className="mx-auto grid max-w-[1400px] grid-cols-12 gap-6 px-6 py-24 md:gap-10 md:px-12 md:py-32">
+        <div className="col-span-12 lg:col-span-5">
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#1c1410]/55">
+            Der Klang einer Person
+          </p>
+          <h2 className="mt-4 font-editorial text-[clamp(2rem,4.5vw,3.5rem)] font-light leading-[1.05] tracking-[-0.015em]">
+            Eine Stimme hat eine Form.
+            <br />
+            <span className="italic text-[#b45a3c]">Wir lassen sie sichtbar werden.</span>
+          </h2>
+          <p className="mt-8 max-w-[42ch] text-[16px] leading-[1.65] text-[#1c1410]/72">
+            Aus deiner Tonhöhe, deinen Pausen, deiner Wortwahl entsteht ein
+            Vokabular: Farben, Schriften, Spannung, Stille. Die Seite atmet,
+            wo du atmest.
+          </p>
+
+          <dl className="mt-10 grid grid-cols-2 gap-x-8 gap-y-6">
+            {[
+              { k: "Tonalität", v: "warm · 0.74" },
+              { k: "Rhythmus", v: "ruhig · 0.41" },
+              { k: "Klangfarbe", v: "tiefer Mittelton" },
+              { k: "Pause-Anteil", v: "23.6 %" },
+            ].map((d) => (
+              <div key={d.k}>
+                <dt className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#1c1410]/50">
+                  {d.k}
+                </dt>
+                <dd className="mt-1 font-editorial text-[20px] tabular-nums">
+                  {d.v}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <figure className="col-span-12 lg:col-span-7">
+          <div className="relative aspect-[16/9] w-full overflow-hidden rounded-sm bg-[#f0ebe0]">
+            <Image
+              src="/landing/voice-abstract.jpg"
+              alt="Eine handgemalte, organische Klangwellen-Form in warmem Terrakotta auf Cremefarben."
+              fill
+              sizes="(min-width: 1024px) 800px, 100vw"
+              className="object-cover"
+            />
+          </div>
+          <figcaption className="mt-4 flex items-baseline justify-between font-mono text-[11px] uppercase tracking-[0.18em] text-[#1c1410]/55">
+            <span>Yuki · 4.7 Sekunden Lachen</span>
+            <span>aus 41 Stunden Material</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function Modes() {
+  return (
+    <section id="modi" className="border-b border-[#1c1410]/10 bg-[#1c1410] text-[#faf7f2]">
+      <div className="mx-auto max-w-[1400px] px-6 py-24 md:px-12 md:py-32">
+        <header className="mb-16 grid grid-cols-12 gap-6 md:mb-20">
+          <div className="col-span-12 md:col-span-4">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#faf7f2]/45">
+              Drei Räume
+            </p>
+            <h2 className="mt-4 font-editorial text-[clamp(2rem,4.5vw,3.5rem)] font-light leading-[1.05] tracking-[-0.015em]">
+              Du betrittst sie,
+              <br />
+              <span className="italic text-[#d99878]">wann du willst</span>.
+            </h2>
+          </div>
+          <p className="col-span-12 max-w-[48ch] text-[16px] leading-[1.7] text-[#faf7f2]/70 md:col-span-7 md:col-start-6">
+            Ein und dieselbe Aufnahme, drei Räume, in denen sie wohnen kann.
+            Der Recruiter sieht etwas anderes als der erste Date. Die Tochter
+            sieht in zwanzig Jahren etwas Drittes — und alle drei stimmen.
+          </p>
+        </header>
+
+        <div className="grid grid-cols-12 gap-6 md:gap-10">
+          {MODES.map((mode) => (
+            <article
+              key={mode.badge}
+              className="col-span-12 md:col-span-4"
+            >
+              <BrowserMockup mode={mode} />
+              <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.2em] text-[#faf7f2]/50">
+                {mode.badge}
+              </p>
+              <h3 className="mt-2 font-editorial text-[26px] font-light leading-tight tracking-tight">
+                {mode.title}
+              </h3>
+              <p className="mt-3 max-w-[40ch] text-[14.5px] leading-[1.65] text-[#faf7f2]/70">
+                {mode.body}
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function BrowserMockup({ mode }: { mode: (typeof MODES)[number] }) {
+  const [bg, accent, surface] = mode.palette;
+  return (
+    <div
+      className="relative aspect-[4/5] w-full overflow-hidden rounded-md border border-[#faf7f2]/10 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.6)]"
+      style={{ background: surface }}
+    >
+      <div
+        className="flex items-center gap-1.5 border-b border-black/10 px-3 py-2"
+        style={{ background: surface }}
+      >
+        <span className="size-2 rounded-full bg-black/15" />
+        <span className="size-2 rounded-full bg-black/15" />
+        <span className="size-2 rounded-full bg-black/15" />
+        <span
+          className="ml-2 truncate font-mono text-[9px] tracking-wide"
+          style={{ color: bg, opacity: 0.6 }}
+        >
+          {mode.sample.label.toLowerCase().replace(" · ", "/")}.cw
+        </span>
+      </div>
+
+      <div className="flex h-full flex-col p-5" style={{ color: bg }}>
+        <p
+          className="font-mono text-[9px] uppercase tracking-[0.18em]"
+          style={{ color: bg, opacity: 0.55 }}
+        >
+          {mode.sample.label}
+        </p>
+        <p
+          className="mt-3 font-editorial text-[22px] font-light leading-[1.1] tracking-tight"
+          style={{ color: bg }}
+        >
+          Hör mir zu,
+          <br />
+          <span style={{ color: accent }} className="italic">
+            bevor du fragst.
+          </span>
+        </p>
+
+        <div className="mt-6 space-y-3 border-t border-black/10 pt-4">
+          {mode.sample.lines.map((line) => (
+            <p
+              key={line}
+              className="text-[11.5px] leading-snug"
+              style={{ color: bg, opacity: 0.75 }}
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+
+        <div className="mt-auto pt-6">
+          <div
+            className="flex h-6 items-center gap-1"
+            style={{ color: accent }}
+          >
+            <Waveform className="h-full w-full" bars={64} seed={mode.badge.length * 23} />
+          </div>
+          <p
+            className="mt-2 font-mono text-[9px] tabular-nums"
+            style={{ color: bg, opacity: 0.55 }}
+          >
+            ▸ 02:14 / 04:47
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function DeviceSection() {
+  return (
+    <section className="border-b border-[#1c1410]/10">
+      <div className="mx-auto grid max-w-[1400px] grid-cols-12 gap-6 px-6 py-24 md:gap-10 md:px-12 md:py-32">
+        <figure className="col-span-12 lg:col-span-6">
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-sm bg-[#1c1410]/5">
+            <Image
+              src="/landing/device-stillife.jpg"
+              alt="Ein kleines schwarzes Aufnahmegerät an einer Lederkordel, ruht auf einem aufgeschlagenen Notizbuch, daneben eine Tasse Kaffee auf einem Holztisch im warmen Morgenlicht."
+              fill
+              sizes="(min-width: 1024px) 700px, 100vw"
+              className="object-cover"
+            />
+          </div>
+        </figure>
+
+        <div className="col-span-12 flex flex-col justify-center lg:col-span-6 lg:pl-4">
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#1c1410]/55">
+            Was du brauchst
+          </p>
+          <h2 className="mt-4 font-editorial text-[clamp(2rem,4.5vw,3.5rem)] font-light leading-[1.05] tracking-[-0.015em]">
+            Ein Anhänger.
+            <br />
+            <span className="italic text-[#b45a3c]">Eine Woche.</span>
+            <br />
+            Sonst nichts.
+          </h2>
+          <p className="mt-8 max-w-[42ch] text-[16px] leading-[1.7] text-[#1c1410]/72">
+            Ein kleiner Recorder, ungefähr so groß wie ein Schlüssel. Du
+            trägst ihn nicht ständig — nur dann, wenn du ohnehin gesprochen
+            hättest. Sieben Tage reichen für eine erste Form. Danach kannst du
+            ihn wegpacken oder weiterhören lassen.
+          </p>
+
+          <ul className="mt-10 space-y-3 border-t border-[#1c1410]/10 pt-6">
+            {[
+              "Du entscheidest, was bleibt — und was gelöscht wird.",
+              "Aufnahmen werden verschlüsselt gespeichert. Niemand außer dir hört zu.",
+              "Du kannst deine Seite jederzeit komplett zurücknehmen.",
+            ].map((line) => (
+              <li
+                key={line}
+                className="flex items-start gap-3 text-[14.5px] leading-[1.6] text-[#1c1410]/80"
+              >
+                <span className="mt-2 size-1 shrink-0 rounded-full bg-[#b45a3c]" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function FinalCTA() {
+  return (
+    <section className="bg-[#faf7f2]">
+      <div className="mx-auto max-w-[1400px] px-6 py-28 md:px-12 md:py-40">
+        <div className="grid grid-cols-12 gap-6 md:gap-10">
+          <div className="col-span-12 lg:col-span-8">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[#1c1410]/55">
+              Anfangen
+            </p>
+            <h2 className="mt-4 font-editorial text-[clamp(2.75rem,7.5vw,6.5rem)] font-light leading-[0.95] tracking-[-0.025em]">
+              Sag etwas
+              <br />
+              <span className="italic text-[#b45a3c]">Wahres.</span>
+              <br />
+              Den Rest übernehmen wir.
+            </h2>
+          </div>
+          <div className="col-span-12 flex flex-col justify-end lg:col-span-4">
+            <p className="max-w-[36ch] text-[16px] leading-[1.7] text-[#1c1410]/72">
+              Eine erste Aufnahme, ein erster Entwurf — kostenlos, in unter
+              zehn Minuten. Du musst nichts wissen. Nur sprechen.
+            </p>
+            <div className="mt-10 flex flex-col gap-3">
+              <Link
+                href="/auth/register"
+                className="group inline-flex items-center justify-between rounded-full bg-[#1c1410] px-6 py-4 text-[14px] font-medium text-[#faf7f2] transition hover:bg-[#3a2a20] active:translate-y-[1px]"
+              >
+                Erste Aufnahme beginnen
+                <span className="font-mono text-[11px] tracking-wide text-[#faf7f2]/70 transition group-hover:translate-x-0.5">
+                  →
+                </span>
+              </Link>
+              <Link
+                href="/auth/login"
+                className="text-center text-[13px] text-[#1c1410]/60 underline-offset-4 transition hover:text-[#1c1410] hover:underline"
+              >
+                Schon angefangen? Hier weitermachen
+              </Link>
             </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <footer className="border-t border-neutral-900/10 bg-[#fafaf7]">
-        <div className="mx-auto flex max-w-[1400px] flex-col gap-3 px-6 py-10 md:flex-row md:items-center md:justify-between md:px-12">
-          <div className="text-[12px] uppercase tracking-[0.18em] text-neutral-600">
-            Character Websites · Cittasana AI · 2026
-          </div>
-          <div className="text-[12px] uppercase tracking-[0.18em] text-neutral-500">
-            ai.cittasana.de
-          </div>
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function Footer() {
+  return (
+    <footer className="border-t border-[#1c1410]/10">
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-6 py-10 md:flex-row md:items-center md:justify-between md:px-12">
+        <div className="flex items-center gap-3">
+          <span className="font-editorial text-[15px] tracking-tight">
+            Character Works
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#1c1410]/50">
+            ein Versuch von Cittasana — Berlin
+          </span>
         </div>
-      </footer>
-    </main>
+        <div className="flex items-center gap-6 font-mono text-[11px] uppercase tracking-[0.18em] text-[#1c1410]/55">
+          <Link href="#" className="hover:text-[#1c1410]">
+            Datenschutz
+          </Link>
+          <Link href="#" className="hover:text-[#1c1410]">
+            Impressum
+          </Link>
+          <Link
+            href="mailto:hallo@cittasana.de"
+            className="hover:text-[#1c1410]"
+          >
+            hallo@cittasana.de
+          </Link>
+        </div>
+      </div>
+    </footer>
   );
 }
