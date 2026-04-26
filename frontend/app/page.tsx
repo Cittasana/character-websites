@@ -187,7 +187,7 @@ export default function LandingPage() {
               Authenticity over curation — the website grows with{" "}
               <span className="italic">who you actually are,</span> not who you
               want to appear to be.
-              <span className="text-neutral-500">"</span>
+              <span className="text-neutral-500">&ldquo;</span>
             </blockquote>
           </div>
         </div>
