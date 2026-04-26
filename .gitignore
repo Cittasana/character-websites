@@ -29,3 +29,4 @@ supabase/.temp/
 # IDE
 .cursor/
 .vscode/
+.vercel

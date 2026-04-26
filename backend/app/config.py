@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     FRONTEND_ISR_WEBHOOK_URL: Optional[str] = None
     FRONTEND_ISR_WEBHOOK_SECRET: Optional[str] = None
 
+    # Supabase E-Mail-Bestätigung: exakt diese URL muss unter Authentication → URL Configuration
+    # in „Redirect URLs“ erlaubt sein (z. B. https://characterwebsites.vercel.app).
+    AUTH_EMAIL_REDIRECT_URL: Optional[str] = None
+
     @property
     def voice_max_bytes(self) -> int:
         return self.VOICE_MAX_SIZE_MB * 1024 * 1024

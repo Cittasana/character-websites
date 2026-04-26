@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, field_validator
 
 from app.auth.dependencies import get_current_active_user
+from app.config import get_settings
 from app.supabase_client import get_supabase, get_supabase_anon
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -66,14 +67,17 @@ async def register(
 ) -> TokenResponse:
     """Create a new user account via Supabase Auth and return session tokens."""
     supabase = get_supabase_anon()
+    settings = get_settings()
+    sign_up_payload: dict = {
+        "email": body.email,
+        "password": body.password,
+    }
+    redirect = (settings.AUTH_EMAIL_REDIRECT_URL or "").strip()
+    if redirect:
+        sign_up_payload["options"] = {"email_redirect_to": redirect.rstrip("/")}
 
     try:
-        auth_response = supabase.auth.sign_up(
-            {
-                "email": body.email,
-                "password": body.password,
-            }
-        )
+        auth_response = supabase.auth.sign_up(sign_up_payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

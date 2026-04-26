@@ -24,18 +24,42 @@ export class ApiError extends Error {
   }
 }
 
+function networkErrorMessage(cause: unknown): string {
+  const raw =
+    cause instanceof Error ? cause.message : String(cause ?? "");
+  const lower = raw.toLowerCase();
+  if (
+    lower.includes("load failed") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("networkerror")
+  ) {
+    return (
+      "API nicht erreichbar. `NEXT_PUBLIC_API_URL` muss die öffentliche FastAPI-URL sein " +
+      "(Railway-Domain oder Custom Domain wie https://api…), nicht die Supabase-URL. " +
+      "Lokal ohne Railway: Backend starten und ggf. http://localhost:8000. " +
+      "Auf Vercel dieselbe Variable in den Projekteinstellungen setzen."
+    );
+  }
+  return raw || "Unbekannter Netzwerkfehler";
+}
+
 async function fetchJson<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers as Record<string, string>),
-    },
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options?.headers as Record<string, string>),
+      },
+      ...options,
+    });
+  } catch (cause) {
+    throw new Error(networkErrorMessage(cause));
+  }
 
   if (!res.ok) {
     let message = `HTTP ${res.status}: ${res.statusText}`;
