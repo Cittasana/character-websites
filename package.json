@@ -1,0 +1,5 @@
+{
+  "name": "character-websites",
+  "private": true,
+  "description": "Monorepo root — the Next.js app is deployed from /frontend (see root vercel.json)."
+}
