@@ -3,7 +3,7 @@
  */
 
 import { redirect, notFound } from "next/navigation";
-import { getPersonalitySchema } from "@/lib/api";
+import { getCharacterPersonalitySchema } from "@/lib/character-data";
 
 interface PageProps {
   params: Promise<{ username: string }>;
@@ -17,12 +17,8 @@ export default async function CharacterRootPage({
   const { username } = await params;
   const { mode } = await searchParams;
 
-  let schema;
-  try {
-    schema = await getPersonalitySchema(username);
-  } catch {
-    notFound();
-  }
+  const schema = await getCharacterPersonalitySchema(username);
+  if (!schema) notFound();
 
   const config = schema.website_config;
 

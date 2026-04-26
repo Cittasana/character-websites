@@ -4,7 +4,7 @@
  */
 
 import { notFound } from "next/navigation";
-import { getPersonalitySchema } from "@/lib/api";
+import { getCharacterPersonalitySchema } from "@/lib/character-data";
 import { DatingHero } from "@/components/dating/DatingHero";
 import { VoiceClipsGallery } from "@/components/dating/VoiceClipsGallery";
 import { PersonalityScores } from "@/components/dating/PersonalityScores";
@@ -21,12 +21,8 @@ export const revalidate = 3600;
 export default async function DatingPage({ params }: DatingPageProps) {
   const { username } = await params;
 
-  let schema;
-  try {
-    schema = await getPersonalitySchema(username);
-  } catch {
-    notFound();
-  }
+  const schema = await getCharacterPersonalitySchema(username);
+  if (!schema) notFound();
 
   // Access control — if dating mode is disabled, redirect to CV
   if (schema.website_config.mode === "cv") {

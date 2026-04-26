@@ -36,7 +36,7 @@ def _make_supabase_auth_mock(user_id=None, fail=False, no_session=False):
     client_mock.auth.refresh_session.return_value = auth_response
     client_mock.auth.get_user.return_value = auth_response
 
-    # Table queries (for is_active check, profile row, audit logs)
+    # Table queries (subscription_status, profile row, audit logs)
     query = MagicMock()
     query.select.return_value = query
     query.eq.return_value = query
@@ -45,10 +45,10 @@ def _make_supabase_auth_mock(user_id=None, fail=False, no_session=False):
     query.execute.return_value = MagicMock(data=[{
         "id": uid,
         "email": "test@example.com",
-        "full_name": "Test User",
-        "is_active": True,
-        "subdomain": None,
-        "plan": "free",
+        "username": "testuser",
+        "display_name": "Test User",
+        "subscription_status": "active",
+        "modes_unlocked": ["cv"],
     }])
     client_mock.table.return_value = query
 

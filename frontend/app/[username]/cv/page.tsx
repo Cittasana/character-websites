@@ -4,7 +4,7 @@
  */
 
 import { notFound } from "next/navigation";
-import { getPersonalitySchema } from "@/lib/api";
+import { getCharacterPersonalitySchema } from "@/lib/character-data";
 import { CVHero } from "@/components/cv/CVHero";
 import { PersonalityInsights } from "@/components/cv/PersonalityInsights";
 import { ExperienceSection } from "@/components/cv/ExperienceSection";
@@ -22,12 +22,8 @@ export const revalidate = 3600; // ISR: revalidate every hour
 export default async function CVPage({ params }: CVPageProps) {
   const { username } = await params;
 
-  let schema;
-  try {
-    schema = await getPersonalitySchema(username);
-  } catch {
-    notFound();
-  }
+  const schema = await getCharacterPersonalitySchema(username);
+  if (!schema) notFound();
 
   const showDatingToggle =
     schema.website_config.mode === "both" ||

@@ -49,7 +49,7 @@ export default function LandingPage() {
           }}
         >
           <a
-            href="#"
+            href="/auth/register"
             style={{
               padding: "0.75rem 2rem",
               background: "var(--color-primary, #0f2a4a)",
@@ -57,21 +57,24 @@ export default function LandingPage() {
               borderRadius: "var(--radius-md, 8px)",
               fontWeight: 600,
               fontSize: "1rem",
+              textDecoration: "none",
             }}
           >
-            Get Started
+            Loslegen
           </a>
           <a
-            href="#"
+            href="/auth/login"
             style={{
               padding: "0.75rem 2rem",
               border: "1px solid var(--color-border, #e2e8f0)",
               borderRadius: "var(--radius-md, 8px)",
               fontWeight: 600,
               fontSize: "1rem",
+              textDecoration: "none",
+              color: "inherit",
             }}
           >
-            See Examples
+            Anmelden
           </a>
         </div>
       </div>

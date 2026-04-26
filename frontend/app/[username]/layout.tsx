@@ -2,7 +2,7 @@
  * Character website layout — wraps all character pages.
  *
  * This server component:
- * 1. Fetches the personality schema for the username from the backend
+ * 1. Fetches the personality schema for the username (Supabase RPC + mapper)
  * 2. Computes design tokens from the schema
  * 3. Injects them as CSS custom properties in <head>
  * 4. Preloads required Google Fonts
@@ -10,9 +10,8 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getPersonalitySchema } from "@/lib/api";
+import { getCharacterPersonalitySchema } from "@/lib/character-data";
 import { buildDesignTokens } from "@/lib/tokens";
-import type { PersonalitySchema } from "@/types/personality-schema";
 
 interface CharacterLayoutProps {
   children: React.ReactNode;
@@ -26,12 +25,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { username } = await params;
 
-  let schema: PersonalitySchema | null = null;
-  try {
-    schema = await getPersonalitySchema(username);
-  } catch {
-    // fallback
-  }
+  const schema = await getCharacterPersonalitySchema(username);
 
   if (!schema) {
     return {
@@ -58,12 +52,7 @@ export default async function CharacterLayout({
 }: CharacterLayoutProps) {
   const { username } = await params;
 
-  let schema: PersonalitySchema | null = null;
-  try {
-    schema = await getPersonalitySchema(username);
-  } catch {
-    // Schema not found — will 404 in child pages
-  }
+  const schema = await getCharacterPersonalitySchema(username);
 
   if (!schema) {
     notFound();
