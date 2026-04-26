@@ -9,7 +9,6 @@ import type {
   PersonalitySchema,
   PersonaType,
   PersonalityDimensions,
-  LayoutDirectives,
 } from "@/types/personality-schema";
 
 // ── Persona detection helpers ────────────────────────────────────────────────

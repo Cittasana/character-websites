@@ -3,6 +3,8 @@
  * Minimal marketing/info page.
  */
 
+import Link from "next/link";
+
 export default function LandingPage() {
   return (
     <main
@@ -48,7 +50,7 @@ export default function LandingPage() {
             flexWrap: "wrap",
           }}
         >
-          <a
+          <Link
             href="/auth/register"
             style={{
               padding: "0.75rem 2rem",
@@ -61,8 +63,8 @@ export default function LandingPage() {
             }}
           >
             Loslegen
-          </a>
-          <a
+          </Link>
+          <Link
             href="/auth/login"
             style={{
               padding: "0.75rem 2rem",
@@ -75,7 +77,7 @@ export default function LandingPage() {
             }}
           >
             Anmelden
-          </a>
+          </Link>
         </div>
       </div>
     </main>
