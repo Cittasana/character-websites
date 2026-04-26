@@ -1,0 +1,10 @@
+# Celery-Worker-Service auf Railway (Config-as-code Pfad: /backend/railway.celery.toml)
+# Kein healthcheckPath — Worker spricht kein HTTP.
+
+[build]
+builder = "DOCKERFILE"
+watchPatterns = ["app/**", "requirements.txt", "Dockerfile"]
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+startCommand = "celery -A app.jobs.celery_app:celery_app worker --loglevel=info --concurrency=2 --queues=analysis,webhooks,default"
