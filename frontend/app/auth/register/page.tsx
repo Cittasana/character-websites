@@ -36,7 +36,9 @@ export default function RegisterPage() {
       router.push('/onboarding')
     } catch (err) {
       if (err instanceof ApiError) setError(err.message)
-      else setError('Registrierung fehlgeschlagen.')
+      else if (err instanceof Error && err.message)
+        setError(`Registrierung fehlgeschlagen: ${err.message}`)
+      else setError('Registrierung fehlgeschlagen (Netzwerk oder CORS — API erreichbar?)')
     } finally {
       setLoading(false)
     }

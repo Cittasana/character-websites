@@ -79,6 +79,8 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
+        # Vercel Production + Preview (z. B. *.vercel.app) — nicht jede URL in ALLOWED_ORIGINS pflegen
+        allow_origin_regex=r"https://[^\s/]+\.vercel\.app$",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
