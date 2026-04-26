@@ -100,8 +100,10 @@ def create_app() -> FastAPI:
     from app.routes.retrieve.voiceclips import router as voiceclips_router
     from app.routes.retrieve.qa import router as qa_router
     from app.routes.omi.devices import router as omi_router
+    from app.routes.onboarding.router import router as onboarding_router
 
     app.include_router(auth_router)
+    app.include_router(onboarding_router)
     app.include_router(voice_router)
     app.include_router(photo_router)
     app.include_router(transcript_router)

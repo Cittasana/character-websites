@@ -2,6 +2,7 @@
 Auth routes: register, login, refresh, me.
 All auth operations are proxied to Supabase Auth.
 """
+import secrets
 import uuid
 from typing import Annotated
 
@@ -12,6 +13,11 @@ from app.auth.dependencies import get_current_active_user
 from app.supabase_client import get_supabase, get_supabase_anon
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _placeholder_username() -> str:
+    """Reserved slug until the user finishes onboarding (cwtmp_…)."""
+    return f"cwtmp_{secrets.token_hex(8)}"
 
 
 # ── Request / Response Schemas ────────────────────────────────────────────────
@@ -46,10 +52,10 @@ class RefreshRequest(BaseModel):
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
-    full_name: str | None
-    is_active: bool
-    subdomain: str | None
-    plan: str
+    username: str
+    display_name: str | None
+    subscription_status: str
+    modes_unlocked: list[str]
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -82,14 +88,14 @@ async def register(
 
     # Create the public.users profile row using service role (bypasses RLS)
     service_client = get_supabase()
+    display = (body.full_name or body.email.split("@", 1)[0]).strip()[:200]
     try:
         service_client.table("users").insert(
             {
                 "id": str(auth_response.user.id),
                 "email": body.email,
-                "full_name": body.full_name,
-                "is_active": True,
-                "plan": "free",
+                "username": _placeholder_username(),
+                "display_name": display or "User",
             }
         ).execute()
     except Exception:
@@ -104,9 +110,11 @@ async def register(
                 "event_type": "auth.register",
                 "ip_address": request.client.host if request.client else None,
                 "user_agent": request.headers.get("user-agent"),
-                "request_path": str(request.url.path),
-                "request_method": "POST",
-                "response_status": 201,
+                "metadata": {
+                    "path": str(request.url.path),
+                    "method": "POST",
+                    "status": 201,
+                },
             }
         ).execute()
     except Exception:
@@ -154,10 +162,13 @@ async def login(
     # Check account is active in public.users
     service_client = get_supabase()
     try:
-        user_row = service_client.table("users").select("is_active").eq(
+        user_row = service_client.table("users").select("subscription_status").eq(
             "id", str(auth_response.user.id)
         ).single().execute()
-        if user_row.data and not user_row.data.get("is_active", True):
+        row = user_row.data
+        if isinstance(row, list):
+            row = row[0] if row else None
+        if row and row.get("subscription_status") != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Account is deactivated",
@@ -175,9 +186,11 @@ async def login(
                 "event_type": "auth.login",
                 "ip_address": request.client.host if request.client else None,
                 "user_agent": request.headers.get("user-agent"),
-                "request_path": str(request.url.path),
-                "request_method": "POST",
-                "response_status": 200,
+                "metadata": {
+                    "path": str(request.url.path),
+                    "method": "POST",
+                    "status": 200,
+                },
             }
         ).execute()
     except Exception:
@@ -227,21 +240,28 @@ async def get_me(
     user_id = str(current_user.id)
 
     result = supabase.table("users").select(
-        "id, email, full_name, is_active, subdomain, plan"
+        "id, email, username, display_name, subscription_status, modes_unlocked"
     ).eq("id", user_id).single().execute()
 
-    if result.data is None:
+    raw = result.data
+    if isinstance(raw, list):
+        data = raw[0] if raw else None
+    else:
+        data = raw
+
+    if data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User profile not found",
         )
-
-    data = result.data
+    modes = data.get("modes_unlocked") or ["cv"]
+    if isinstance(modes, str):
+        modes = [modes]
     return UserResponse(
         id=data["id"],
         email=data["email"],
-        full_name=data.get("full_name"),
-        is_active=data.get("is_active", True),
-        subdomain=data.get("subdomain"),
-        plan=data.get("plan", "free"),
+        username=data["username"],
+        display_name=data.get("display_name"),
+        subscription_status=data.get("subscription_status", "active"),
+        modes_unlocked=list(modes),
     )

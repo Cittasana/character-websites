@@ -32,7 +32,7 @@ async function fetchJson<T>(
   const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
-      ...options?.headers,
+      ...(options?.headers as Record<string, string>),
     },
     ...options,
   });
@@ -49,6 +49,68 @@ async function fetchJson<T>(
   }
 
   return res.json() as Promise<T>;
+}
+
+// ── Auth & onboarding (Bearer = Supabase access token) ─────────────────────
+
+export type MeResponse = {
+  id: string;
+  email: string;
+  username: string;
+  display_name: string | null;
+  subscription_status: string;
+  modes_unlocked: string[];
+};
+
+export type OnboardingStatusResponse = {
+  needs_onboarding: boolean;
+  username: string;
+  display_name: string | null;
+};
+
+export type OnboardingCompleteResponse = {
+  ok: boolean;
+  username: string;
+};
+
+export async function getMe(accessToken: string): Promise<MeResponse> {
+  return fetchJson<MeResponse>("/api/auth/me", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+}
+
+export async function getOnboardingStatus(
+  accessToken: string,
+): Promise<OnboardingStatusResponse> {
+  return fetchJson<OnboardingStatusResponse>("/api/onboarding/status", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+}
+
+export async function completeOnboarding(
+  accessToken: string,
+  body: { username: string; display_name: string },
+): Promise<OnboardingCompleteResponse> {
+  return fetchJson<OnboardingCompleteResponse>("/api/onboarding/complete", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+}
+
+export async function registerAccount(body: {
+  email: string;
+  password: string;
+  full_name?: string | null;
+}): Promise<{ access_token: string; refresh_token: string; token_type: string }> {
+  return fetchJson("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
 }
 
 // ── Retrieve endpoints ───────────────────────────────────────────────────────

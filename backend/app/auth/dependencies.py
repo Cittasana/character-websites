@@ -49,14 +49,19 @@ async def get_current_active_user(
     user_id = current_user.id
     try:
         supabase = get_supabase()
-        result = supabase.table("users").select("id, is_active").eq("id", str(user_id)).single().execute()
-        if result.data is None:
+        result = supabase.table("users").select("id, subscription_status").eq(
+            "id", str(user_id)
+        ).single().execute()
+        row = result.data
+        if isinstance(row, list):
+            row = row[0] if row else None
+        if row is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User profile not found",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if not result.data.get("is_active", True):
+        if row.get("subscription_status") != "active":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Account is deactivated",

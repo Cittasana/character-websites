@@ -42,10 +42,10 @@ def _make_fake_supabase(user_row: dict = None):
     default_user = user_row or {
         "id": str(uuid.uuid4()),
         "email": "test@example.com",
-        "full_name": "Test User",
-        "is_active": True,
-        "subdomain": None,
-        "plan": "free",
+        "username": "testuser",
+        "display_name": "Test User",
+        "subscription_status": "active",
+        "modes_unlocked": ["cv"],
     }
 
     # Fluent query builder — each method returns the mock itself so chains work
@@ -108,10 +108,10 @@ def fake_supabase(test_user_id, test_user_email):
     return _make_fake_supabase({
         "id": test_user_id,
         "email": test_user_email,
-        "full_name": "Test User",
-        "is_active": True,
-        "subdomain": None,
-        "plan": "free",
+        "username": "testuser",
+        "display_name": "Test User",
+        "subscription_status": "active",
+        "modes_unlocked": ["cv"],
     })
 
 
