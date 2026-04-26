@@ -41,4 +41,4 @@ python-dotenv==1.0.1
 structlog==24.2.0
 tenacity==8.3.0
 python-magic==0.4.27
-pillow==10.3.0
+pillow==12.2.0
