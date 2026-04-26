@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-sans), system-ui, sans-serif;
-  --font-serif: var(--font-serif), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-body), system-ui, sans-serif;
+  --font-display: var(--font-display), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, "SFMono-Regular", monospace;
 }
 
 /* ── Base CSS custom properties ────────────────────────────────────────────── */
@@ -22,9 +23,10 @@
   }
 
   body {
-    background-color: var(--color-background, #ffffff);
-    color: var(--color-text-primary, #1e293b);
+    background-color: var(--color-background, #f9fafb);
+    color: var(--color-text-primary, #0a0a0a);
     font-family: var(--font-body, system-ui, sans-serif);
+    font-feature-settings: "ss01", "cv11";
     line-height: 1.6;
     margin: 0;
     padding: 0;
@@ -106,6 +108,12 @@
   .text-persona-3xl  { font-size: var(--text-3xl); }
   .text-persona-4xl  { font-size: var(--text-4xl); }
   .text-persona-5xl  { font-size: var(--text-5xl); }
+}
+
+/* ── Skeleton shimmer ─────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
 }
 
 /* ── Waveform canvas ─────────────────────────────────────────────────────── */
