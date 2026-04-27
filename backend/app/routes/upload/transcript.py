@@ -127,16 +127,26 @@ async def upload_transcript(
     except Exception:
         pass
 
-    # Trigger async Celery analysis
+    # Trigger Celery analysis. Omi-sourced transcripts go through the
+    # debouncer (Omi can deliver many short transcripts per hour); manual
+    # paste runs immediately so the user sees a fresh website right away.
+    # Quota and global Anthropic-RPM apply in both paths.
     processing_status = "pending"
     try:
-        from app.jobs.analysis import analyze_recording_task
+        from app.jobs.analysis import enqueue_analysis_for_recording
 
-        task = analyze_recording_task.delay(recording_id)
+        scheduled = enqueue_analysis_for_recording(
+            user_id=user_id,
+            recording_id=recording_id,
+            debounce=(body.source == "omi"),
+        )
         supabase.table("recordings").update(
-            {"celery_task_id": task.id, "processing_status": "queued"}
+            {
+                "celery_task_id": scheduled.get("task_id"),
+                "processing_status": scheduled["processing_status"],
+            }
         ).eq("id", recording_id).execute()
-        processing_status = "queued"
+        processing_status = scheduled["processing_status"]
     except Exception:
         processing_status = "pending"
 

@@ -2,18 +2,29 @@
 Claude AI personality analysis.
 Sends transcript + acoustic metadata to Claude claude-sonnet-4-20250514,
 gets back structured JSON personality schema.
+
+Rate-limit aware:
+- Honours the ``retry-after`` header on Anthropic 429/529 responses by
+  sleeping the requested amount (capped) before letting tenacity retry.
+- Global RPM throttling is owned by the Celery worker layer
+  (``app.jobs.rate_limiter.acquire_global_token``), not this module.
 """
+import asyncio
 import json
 import logging
 import re
 from typing import Any
 
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+# Cap retry-after waits so a misconfigured upstream cannot hang the worker
+# for hours.
+_MAX_RETRY_AFTER_SECONDS = 60.0
 
 # ── Structured response schema ─────────────────────────────────────────────────
 PERSONALITY_SCHEMA_TEMPLATE = {
@@ -139,9 +150,45 @@ Return a JSON object matching EXACTLY the schema below.
 Respond with ONLY the JSON object. No explanation, no markdown formatting."""
 
 
+def _retry_on_anthropic_transient_errors(exc: BaseException) -> bool:
+    """
+    Retry policy for tenacity: only retry on transient Anthropic conditions
+    (rate limits, overloaded, timeouts, transient API errors). Validation
+    errors / auth errors should fail fast.
+    """
+    import anthropic
+
+    return isinstance(
+        exc,
+        (
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError,
+            anthropic.InternalServerError,
+        ),
+    )
+
+
+def _extract_retry_after_seconds(exc: BaseException) -> float | None:
+    """Read ``retry-after`` header (seconds) from an Anthropic exception."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    raw = headers.get("retry-after") or headers.get("Retry-After")
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(_MAX_RETRY_AFTER_SECONDS, seconds))
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=60),
+    retry=retry_if_exception(_retry_on_anthropic_transient_errors),
     reraise=True,
 )
 async def analyze_personality_with_claude(
@@ -150,7 +197,10 @@ async def analyze_personality_with_claude(
 ) -> dict[str, Any]:
     """
     Send transcript and acoustic data to Claude and get structured personality schema.
+
     Retries up to 3 times with exponential backoff on transient errors.
+    On 429 / 529, honours Anthropic's ``retry-after`` header before letting
+    tenacity decide whether to retry.
     """
     import anthropic
 
@@ -161,12 +211,31 @@ async def analyze_personality_with_claude(
         acoustic_summary=acoustic_summary,
     )
 
-    message = await client.messages.create(
-        model=settings.CLAUDE_MODEL,
-        max_tokens=settings.CLAUDE_MAX_TOKENS,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        message = await client.messages.create(
+            model=settings.CLAUDE_MODEL,
+            max_tokens=settings.CLAUDE_MAX_TOKENS,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.RateLimitError as exc:
+        retry_after = _extract_retry_after_seconds(exc)
+        if retry_after is not None:
+            logger.warning(
+                "Anthropic 429 — honouring retry-after=%.1fs before retry", retry_after,
+            )
+            await asyncio.sleep(retry_after)
+        raise
+    except anthropic.InternalServerError as exc:
+        # 529 (Overloaded) also lands here in some SDK versions.
+        retry_after = _extract_retry_after_seconds(exc)
+        if retry_after is not None:
+            logger.warning(
+                "Anthropic overloaded — honouring retry-after=%.1fs before retry",
+                retry_after,
+            )
+            await asyncio.sleep(retry_after)
+        raise
 
     raw_response = message.content[0].text.strip()
 

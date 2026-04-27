@@ -141,15 +141,23 @@ async def upload_voice(
     except Exception:
         pass  # Audit failure must not block the response
 
-    # ── Trigger async Celery analysis ────────────────────────────────────
+    # ── Trigger debounced Celery analysis ────────────────────────────────
+    # Voice uploads land here from the Omi sync orchestrator, which can fire
+    # dozens of recordings per user per day. Debouncing coalesces these into
+    # a single Claude call per CLAUDE_DEBOUNCE_SECONDS window.
     try:
-        from app.jobs.analysis import analyze_recording_task
+        from app.jobs.analysis import enqueue_analysis_for_recording
 
-        task = analyze_recording_task.delay(recording_id)
+        scheduled = enqueue_analysis_for_recording(
+            user_id=user_id, recording_id=recording_id, debounce=True,
+        )
         supabase.table("recordings").update(
-            {"celery_task_id": task.id, "processing_status": "queued"}
+            {
+                "celery_task_id": scheduled.get("task_id"),
+                "processing_status": scheduled["processing_status"],
+            }
         ).eq("id", recording_id).execute()
-        processing_status = "queued"
+        processing_status = scheduled["processing_status"]
     except Exception:
         # Job broker unavailable — leave status as pending
         processing_status = "pending"
