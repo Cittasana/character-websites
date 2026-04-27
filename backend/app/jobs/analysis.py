@@ -1,7 +1,8 @@
 """
 Celery tasks for the analysis pipeline:
 1. analyze_recording_task — acoustic extraction + Claude personality analysis
-2. trigger_isr_webhook_task — notify Next.js ISR endpoint to re-render
+2. process_user_pending_analysis_task — debounced entry point used by Omi sync
+3. trigger_isr_webhook_task — notify Next.js ISR endpoint to re-render
 """
 import logging
 from datetime import datetime, timezone
@@ -14,11 +15,125 @@ from app.analysis.acoustic import extract_acoustic_metadata, format_acoustic_for
 from app.analysis.claude_analysis import analyze_personality_with_claude
 from app.config import get_settings
 from app.jobs.celery_app import celery_app
+from app.jobs.rate_limiter import (
+    acquire_global_token,
+    clear_scheduled_marker,
+    consume_user_quota,
+    mark_user_pending,
+    refund_user_quota,
+    seconds_until_utc_midnight,
+    take_user_pending,
+    try_schedule_user_analysis,
+)
 from app.supabase_client import get_supabase
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+
+# ── Public scheduling entry point ─────────────────────────────────────────────
+
+def enqueue_analysis_for_recording(
+    user_id: str,
+    recording_id: str,
+    *,
+    debounce: bool = True,
+) -> dict[str, Any]:
+    """
+    Trigger Claude analysis for a freshly inserted recording.
+
+    Args:
+        user_id: Owner of the recording.
+        recording_id: Newly inserted ``recordings`` row id.
+        debounce: When True (Omi sync default), Claude calls for the same
+            user are coalesced inside ``CLAUDE_DEBOUNCE_SECONDS``. When False
+            (manual transcript paste, retries), the analysis is enqueued
+            immediately — quota and global RPM still apply inside the task.
+
+    Returns:
+        Dict describing the dispatched action — see ``processing_status``
+        callers expect for surfacing to the API client.
+    """
+    if not debounce:
+        task = analyze_recording_task.delay(recording_id)
+        return {
+            "mode": "immediate",
+            "task_id": task.id,
+            "processing_status": "queued",
+        }
+
+    # Debounced path: always overwrite the pending pointer with the latest
+    # recording, then schedule a Celery task only if no debounce window is
+    # currently armed.
+    mark_user_pending(user_id, recording_id)
+
+    if try_schedule_user_analysis(user_id, settings.CLAUDE_DEBOUNCE_SECONDS):
+        task = process_user_pending_analysis_task.apply_async(
+            args=[user_id],
+            countdown=settings.CLAUDE_DEBOUNCE_SECONDS,
+        )
+        logger.info(
+            "Scheduled debounced Claude analysis for user=%s recording=%s in %ss "
+            "(task_id=%s)",
+            user_id[:8], recording_id, settings.CLAUDE_DEBOUNCE_SECONDS, task.id,
+        )
+        return {
+            "mode": "debounced",
+            "task_id": task.id,
+            "processing_status": "queued_debounced",
+        }
+
+    logger.info(
+        "Coalesced Claude analysis for user=%s recording=%s into existing debounce window",
+        user_id[:8], recording_id,
+    )
+    return {
+        "mode": "coalesced",
+        "task_id": None,
+        "processing_status": "queued_debounced",
+    }
+
+
+# ── Debounced entry task (Omi-burst friendly) ────────────────────────────────
+
+@celery_app.task(
+    bind=True,
+    name="app.jobs.analysis.process_user_pending_analysis_task",
+    max_retries=3,
+    default_retry_delay=60,
+    queue="analysis",
+    acks_late=True,
+)
+def process_user_pending_analysis_task(self: Task, user_id: str) -> dict[str, Any]:
+    """
+    Fires after ``CLAUDE_DEBOUNCE_SECONDS`` to process the *latest* pending
+    recording for ``user_id``.
+
+    Atomically pulls the pending recording_id, then routes through the same
+    rate-limited path as ``analyze_recording_task``. Older Omi updates that
+    arrived during the debounce window are intentionally dropped — only the
+    newest transcript drives the personality refresh.
+    """
+    # Free the schedule marker first: any new upload during the rest of this
+    # task can immediately mark a fresh pending + arm the next debounce cycle.
+    clear_scheduled_marker(user_id)
+
+    recording_id = take_user_pending(user_id)
+    if not recording_id:
+        logger.info(
+            "Debounced analysis fired for user=%s but no pending recording — skipping",
+            user_id[:8],
+        )
+        return {"skipped": True, "reason": "no_pending_recording"}
+
+    logger.info(
+        "Debounced analysis firing for user=%s -> recording=%s",
+        user_id[:8], recording_id,
+    )
+    return _run_with_rate_limits(self, recording_id)
+
+
+# ── Direct entry task (manual paths, queue retries) ──────────────────────────
 
 @celery_app.task(
     bind=True,
@@ -30,24 +145,118 @@ logger = logging.getLogger(__name__)
 )
 def analyze_recording_task(self: Task, recording_id: str) -> dict[str, Any]:
     """
-    Main analysis pipeline task.
-    1. Load recording from Supabase DB
-    2. Download audio from Supabase Storage and extract acoustic metadata
-    3. Run Claude personality analysis
-    4. Store versioned PersonalitySchema
-    5. Create/update WebsiteConfig
-    6. Trigger ISR webhook
+    Main analysis pipeline task (no debounce).
+
+    Use ``enqueue_analysis_for_recording`` instead of calling ``.delay()``
+    directly so per-user debouncing applies for Omi-driven uploads.
     """
     logger.info("Starting analysis for recording_id=%s", recording_id)
+    return _run_with_rate_limits(self, recording_id)
 
+
+# ── Rate-limited execution wrapper ───────────────────────────────────────────
+
+def _run_with_rate_limits(task: Task, recording_id: str) -> dict[str, Any]:
+    """
+    Shared body used by both entry tasks.
+
+    Order of guards:
+        1. Global RPM token-bucket (transient back-pressure → Celery retry).
+        2. Per-user daily quota (terminal → mark recording skipped).
+        3. Actual analysis pipeline.
+
+    Quota is refunded if the analysis itself fails, so retries do not
+    permanently consume a user's daily budget.
+    """
+    user_id = _get_recording_user_id(recording_id)
+    if user_id is None:
+        logger.warning(
+            "Recording %s has no user_id (deleted?) — skipping analysis", recording_id,
+        )
+        return {"skipped": True, "reason": "recording_missing"}
+
+    # Step 1: respect global Anthropic RPM budget.
+    if not acquire_global_token(settings.CLAUDE_GLOBAL_TOKEN_TIMEOUT_SECONDS):
+        backoff = min(300, 30 * (2 ** task.request.retries))
+        logger.warning(
+            "Global Claude RPM bucket empty — retrying recording=%s in %ss "
+            "(attempt %s/%s)",
+            recording_id, backoff, task.request.retries + 1, task.max_retries,
+        )
+        raise task.retry(countdown=backoff)
+
+    # Step 2: per-user daily cap.
+    if not consume_user_quota(user_id, settings.CLAUDE_MAX_PER_USER_PER_DAY):
+        logger.warning(
+            "Daily Claude quota exhausted for user=%s — recording=%s deferred",
+            user_id[:8], recording_id,
+        )
+        _mark_recording_quota_skipped(recording_id)
+        # Re-arm debounce so the recording auto-picks up after midnight UTC
+        # without user intervention.
+        try:
+            mark_user_pending(user_id, recording_id)
+            if try_schedule_user_analysis(user_id, seconds_until_utc_midnight()):
+                process_user_pending_analysis_task.apply_async(
+                    args=[user_id],
+                    countdown=seconds_until_utc_midnight(),
+                )
+        except Exception as reschedule_exc:
+            logger.error(
+                "Could not reschedule quota-blocked recording=%s: %s",
+                recording_id, reschedule_exc,
+            )
+        return {"skipped": True, "reason": "user_quota_exceeded", "user_id": user_id}
+
+    # Step 3: actual pipeline.
     try:
         result = _analyze_recording(recording_id)
         logger.info("Analysis complete for recording_id=%s", recording_id)
         return result
     except Exception as exc:
-        logger.error("Analysis failed for recording_id=%s: %s", recording_id, exc, exc_info=True)
+        # Refund quota so a transient failure does not waste the user's budget.
+        try:
+            refund_user_quota(user_id)
+        except Exception:
+            logger.warning("Quota refund failed for user=%s (non-fatal)", user_id[:8])
+
+        logger.error(
+            "Analysis failed for recording_id=%s: %s", recording_id, exc, exc_info=True,
+        )
         _mark_recording_failed(recording_id, str(exc))
-        raise self.retry(exc=exc, countdown=30 * (2 ** self.request.retries))
+        if task.request.retries >= task.max_retries:
+            _notify_analysis_failure(recording_id, exc, attempts=task.request.retries + 1)
+            raise
+        raise task.retry(exc=exc, countdown=30 * (2 ** task.request.retries))
+
+
+def _get_recording_user_id(recording_id: str) -> str | None:
+    """Light query — we need user_id before running the heavy pipeline."""
+    try:
+        supabase = get_supabase()
+        result = supabase.table("recordings").select("user_id").eq(
+            "id", recording_id
+        ).single().execute()
+        return (result.data or {}).get("user_id")
+    except Exception as exc:
+        logger.error("user_id lookup failed for recording=%s: %s", recording_id, exc)
+        return None
+
+
+def _mark_recording_quota_skipped(recording_id: str) -> None:
+    """Persist a deferred status for quota-blocked recordings."""
+    try:
+        supabase = get_supabase()
+        supabase.table("recordings").update(
+            {
+                "processing_status": "deferred_quota",
+                "error_message": "Daily Claude quota exceeded — auto-resumes after UTC midnight",
+            }
+        ).eq("id", recording_id).execute()
+    except Exception as exc:
+        logger.error(
+            "Could not mark recording %s as quota-skipped: %s", recording_id, exc,
+        )
 
 
 def _analyze_recording(recording_id: str) -> dict[str, Any]:
@@ -224,6 +433,44 @@ def _mark_recording_failed(recording_id: str, error_msg: str) -> None:
         ).eq("id", recording_id).execute()
     except Exception as exc:
         logger.error("Could not mark recording %s as failed: %s", recording_id, exc)
+
+
+def _notify_analysis_failure(
+    recording_id: str, exc: BaseException, *, attempts: int
+) -> None:
+    """Persist + alert on a final analysis failure (after retries exhausted)."""
+    try:
+        from app.monitoring import AlertSeverity, get_alerter, record_analysis_failure
+
+        user_id: str | None = None
+        try:
+            supabase = get_supabase()
+            row = supabase.table("recordings").select("user_id").eq(
+                "id", recording_id
+            ).single().execute()
+            user_id = (row.data or {}).get("user_id")
+        except Exception:
+            pass
+
+        record_analysis_failure(
+            recording_id=recording_id,
+            user_id=user_id,
+            error_message=str(exc),
+            attempts=attempts,
+        )
+        get_alerter().send(
+            severity=AlertSeverity.CRITICAL,
+            title="Claude analysis failed (retries exhausted)",
+            message=str(exc)[:500],
+            context={
+                "recording_id": recording_id,
+                "user_id": (user_id or "")[:8],
+                "attempts": attempts,
+            },
+            dedup_key=f"analysis:{recording_id}",
+        )
+    except Exception as notify_exc:
+        logger.error("notify_analysis_failure failed: %s", notify_exc)
 
 
 def _build_website_config(schema_data: dict[str, Any]) -> dict[str, Any]:

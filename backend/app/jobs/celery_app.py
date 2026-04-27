@@ -41,15 +41,27 @@ def create_celery_app() -> Celery:
         task_default_queue="default",
         task_routes={
             "app.jobs.analysis.analyze_recording_task": {"queue": "analysis"},
+            "app.jobs.analysis.process_user_pending_analysis_task": {"queue": "analysis"},
             "app.jobs.analysis.trigger_isr_webhook_task": {"queue": "webhooks"},
+            "app.jobs.monitoring.check_sync_health_task": {"queue": "default"},
         },
         # ── Retry policy ──────────────────────────────────────────────────
         task_max_retries=3,
         task_retry_backoff=True,
         task_retry_backoff_max=600,  # 10 minutes max
         task_retry_jitter=True,
+        # ── Beat schedule ─────────────────────────────────────────────────
+        # Beat must be started explicitly: `celery -A app.jobs.celery_app beat`.
+        # Disable per-environment by setting MONITORING_ENABLED=false.
+        beat_schedule={
+            "sync-health-check": {
+                "task": "app.jobs.monitoring.check_sync_health_task",
+                "schedule": float(settings.MONITORING_BEAT_INTERVAL_SECONDS),
+                "options": {"queue": "default"},
+            },
+        } if settings.MONITORING_ENABLED else {},
         # ── Autodiscovery ─────────────────────────────────────────────────
-        include=["app.jobs.analysis"],
+        include=["app.jobs.analysis", "app.jobs.monitoring"],
     )
 
     return app
