@@ -20,7 +20,7 @@ soundfile==0.12.1
 scipy==1.13.0
 
 # ── Transcription Fallback ────────────────────────────────────────────────────
-openai==1.30.0               # Whisper API via OpenAI SDK (also used for Whisper API calls)
+openai==2.33.0               # Whisper API via OpenAI SDK (also used for Whisper API calls)
 # openai-whisper==20231117   # Local Whisper model (optional — uncomment for local inference)
 
 # ── Language Detection ────────────────────────────────────────────────────────
