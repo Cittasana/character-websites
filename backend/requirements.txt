@@ -4,7 +4,7 @@ uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 
 # Supabase (replaces SQLAlchemy, boto3, custom-JWT)
-supabase==2.10.0
+supabase==2.29.0
 
 # Redis + Celery
 celery[redis]==5.4.0
