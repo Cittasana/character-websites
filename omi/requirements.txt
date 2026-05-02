@@ -16,7 +16,7 @@ cryptography==47.0.0
 # ── Acoustic Analysis ─────────────────────────────────────────────────────────
 librosa==0.10.2
 numpy==1.26.4
-soundfile==0.12.1
+soundfile==0.13.1
 scipy==1.13.0
 
 # ── Transcription Fallback ────────────────────────────────────────────────────
